@@ -1,0 +1,3934 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gravity Landing: 착륙의 기술</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#03030a;
+  --accent:#4fc3f7;
+  --danger:#ff4444;
+  --success:#44ff88;
+  --warn:#ffaa00;
+  --fuel:#4fc3f7;
+  --ui-glass:rgba(5,15,40,0.85);
+  --border:rgba(79,195,247,0.25);
+}
+body{background:var(--bg);font-family:'Inter',sans-serif;color:#fff;overflow:hidden;user-select:none;}
+canvas{display:block;position:fixed;inset:0;}
+
+/* ── HUD ── */
+#hud{position:fixed;top:0;left:0;right:0;pointer-events:none;z-index:10;}
+#hud-top{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 20px;gap:12px;}
+.hud-panel{background:var(--ui-glass);border:1px solid var(--border);border-radius:9px;padding:6px 12px;backdrop-filter:blur(8px);}
+.hud-label{font-family:'Orbitron',monospace;font-size:9px;letter-spacing:.15em;color:rgba(255,255,255,.4);margin-bottom:2px;}
+.hud-value{font-family:'Orbitron',monospace;font-size:14px;font-weight:700;color:var(--accent);}
+#fuel-bar-wrap{width:140px;}
+#fuel-bar-bg{height:6px;background:rgba(255,255,255,.1);border-radius:3px;margin-top:3px;}
+#fuel-bar{height:6px;border-radius:3px;background:linear-gradient(90deg,#4fc3f7,#00e5ff);transition:width .3s,background .3s;}
+#vel-indicator{display:flex;align-items:center;gap:6px;}
+#vel-dot{width:8px;height:8px;border-radius:50%;background:var(--success);flex-shrink:0;transition:background .2s;}
+#mission-panel{max-width:320px;}
+#mission-list{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+.mission-item{font-size:11px;display:flex;align-items:center;gap:8px;opacity:.6;transition:opacity .3s;}
+.mission-item.active{opacity:1;color:var(--warn);}
+.mission-item.done{opacity:.4;text-decoration:line-through;color:var(--success);}
+.mission-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0;}
+#timer-val{color:var(--warn);}
+
+/* ── OVERLAYS ── */
+/* 세로가 짧은 폰: 카드가 화면보다 높으면 잘리지 않고 스크롤되도록(margin:auto로 들어맞을 땐 중앙정렬) */
+.overlay{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:16px;z-index:50;background:rgba(3,3,10,.88);backdrop-filter:blur(6px);-webkit-overflow-scrolling:touch;}
+.overlay.hidden{display:none;}
+.hidden{display:none!important;} /* .btn 등 ID 우선순위 규칙(#ov-pause .btn)도 확실히 숨김 */
+.card{background:rgba(5,12,32,.95);border:1px solid var(--border);border-radius:20px;padding:44px 48px;text-align:center;max-width:480px;width:90%;margin:auto;flex-shrink:0;}
+.card h1{font-family:'Orbitron',monospace;font-size:28px;font-weight:900;letter-spacing:.12em;color:var(--accent);margin-bottom:8px;}
+.card h2{font-family:'Orbitron',monospace;font-size:18px;font-weight:700;letter-spacing:.1em;margin-bottom:16px;}
+.card p{font-size:13px;line-height:1.7;color:rgba(255,255,255,.6);margin-bottom:20px;}
+.card .sub{font-size:11px;color:rgba(255,255,255,.35);letter-spacing:.08em;font-family:'Orbitron',monospace;margin-bottom:28px;}
+/* planet info (education) card */
+#pi-orb{width:88px;height:88px;border-radius:50%;margin:0 auto 14px;box-shadow:0 0 40px rgba(255,255,255,.18);}
+#pi-name{font-family:'Orbitron',monospace;font-size:22px;font-weight:800;letter-spacing:.05em;color:#fff;margin-bottom:6px;}
+#pi-tagline{font-size:14px;color:var(--accent);margin-bottom:18px;font-weight:600;}
+#pi-stars{font-size:28px;letter-spacing:4px;margin-bottom:16px;min-height:32px;}
+#pi-stars .lbl{display:block;font-size:12px;letter-spacing:0;color:rgba(255,255,255,.6);margin-top:2px;}
+.codex-stars{font-size:14px;letter-spacing:2px;margin-top:4px;}
+#pi-facts{display:flex;flex-direction:column;gap:10px;text-align:left;margin-bottom:24px;}
+.pi-fact{font-size:14px;line-height:1.5;color:rgba(255,255,255,.85);background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:10px;padding:10px 14px;}
+#pi-note{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:18px;}
+/* ending */
+#ending-title{font-family:'Orbitron',monospace;font-size:30px;font-weight:900;letter-spacing:.1em;background:linear-gradient(135deg,#ffd700,#ff6347,#ffd700);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;}
+#ending-planets{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin:20px 0;}
+.ending-planet{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.ending-planet .dot{width:26px;height:26px;border-radius:50%;box-shadow:0 0 12px rgba(255,255,255,.25);}
+.ending-planet .nm{font-size:9px;color:rgba(255,255,255,.6);font-family:'Orbitron',monospace;}
+#ending-msg{font-size:14px;line-height:1.7;color:rgba(255,255,255,.75);margin-bottom:16px;}
+#ending-stats{font-family:'Orbitron',monospace;font-size:13px;color:var(--accent);margin-bottom:24px;}
+/* codex (도감) */
+#codex-card{max-width:680px;width:94%;}
+#codex-card h2{margin-bottom:14px;}
+#codex-progress{font-size:13px;color:var(--accent);}
+#codex-grid{max-height:46vh;overflow-y:auto;text-align:left;margin-bottom:14px;padding-right:6px;}
+.codex-cat{font-family:'Orbitron',monospace;font-size:11px;letter-spacing:.1em;color:rgba(255,255,255,.5);margin:12px 0 8px;}
+.codex-row{display:flex;flex-wrap:wrap;gap:8px;}
+.codex-tile{display:flex;flex-direction:column;align-items:center;gap:5px;width:64px;padding:8px 4px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.03);cursor:pointer;transition:background .15s;}
+.codex-tile:hover{background:rgba(79,195,247,.12);}
+.codex-tile.locked{cursor:default;opacity:.5;}
+.codex-tile.locked:hover{background:rgba(255,255,255,.03);}
+.codex-dot{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.08);}
+canvas.codex-dot{position:static;inset:auto;width:40px;height:40px;border-radius:0;background:transparent;display:block;} /* 전역 canvas{position:fixed} 무효화 */
+canvas.codex-detail-orb{position:static;inset:auto;width:30px;height:30px;border-radius:0;display:inline-block;vertical-align:middle;}
+.codex-tile.locked .codex-dot{display:flex;align-items:center;justify-content:center;}
+.codex-tile.locked .codex-dot::after{content:'?';color:rgba(255,255,255,.4);font-weight:700;font-family:'Orbitron',monospace;}
+.codex-nm{font-size:9px;color:rgba(255,255,255,.75);text-align:center;line-height:1.2;}
+#codex-detail{min-height:90px;text-align:left;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;}
+.codex-detail-head{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;margin-bottom:6px;}
+.codex-detail-orb{width:24px;height:24px;border-radius:50%;display:inline-block;}
+.codex-detail-tag{font-size:12px;color:var(--accent);margin-bottom:10px;}
+#codex-detail .codex-fact{font-size:12px;line-height:1.5;color:rgba(255,255,255,.8);margin-bottom:5px;}
+.codex-hint{font-size:12px;color:rgba(255,255,255,.4);text-align:center;padding:24px 0;}
+/* profiles / name input */
+#name-input{display:block;width:100%;box-sizing:border-box;margin:0 0 12px;padding:12px 16px;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:12px;color:#fff;font-family:'Orbitron',monospace;font-size:14px;text-align:center;letter-spacing:.05em;outline:none;}
+#name-input:focus{border-color:var(--accent);background:rgba(79,195,247,.08);}
+#name-input::placeholder{color:rgba(255,255,255,.3);}
+#profiles-list{text-align:left;max-height:50vh;overflow-y:auto;margin-bottom:16px;display:flex;flex-direction:column;gap:8px;}
+.profile-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
+.profile-row .pinfo{flex:1;min-width:0;cursor:pointer;}
+.profile-row .pname{font-family:'Orbitron',monospace;font-weight:700;font-size:14px;color:#fff;margin-bottom:3px;}
+.profile-row .pmeta{font-size:10px;color:rgba(255,255,255,.5);}
+.profile-del{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:8px;color:rgba(255,120,120,.9);font-size:11px;padding:8px 10px;cursor:pointer;flex-shrink:0;}
+.profile-del:hover{background:rgba(255,80,80,.25);}
+.profiles-empty{font-size:12px;color:rgba(255,255,255,.4);text-align:center;padding:24px 0;}
+@media(max-width:768px){#pi-orb{width:72px;height:72px;}#pi-name{font-size:19px;}#pi-tagline{font-size:13px;}.pi-fact{font-size:13px;}}
+/* responsive card padding */
+/* ── responsive: action buttons to bottom on narrow screens ── */
+@media(max-width:768px){
+  .card{padding:28px 20px;}.overlay{backdrop-filter:blur(4px);}
+  #ov-title h1{font-size:24px;}#ov-title .sub{font-size:10px;}
+  #ov-title .title-ornament{font-size:8px;gap:8px;}
+  .btn{padding:14px 28px;font-size:14px;white-space:nowrap;}
+  #ov-title .btn-ghost{margin:10px 0 0 0;display:block;width:100%;}
+  #ov-title .btn{display:block;width:100%;}
+  /* move action buttons to bottom-right (never overlap HUD) */
+  #hud-actions{top:auto !important;bottom:16px;right:12px;flex-direction:column;gap:8px;}
+  .hud-action-btn{padding:16px 28px;font-size:15px;border-radius:16px;min-height:52px;display:flex;align-items:center;justify-content:center;}
+  .dev-btn{font-size:9px;padding:6px 12px;}
+  /* zoom buttons to bottom-left */
+  #zoom-btns{bottom:16px;right:auto;left:12px;gap:6px;}
+  .zoom-btn{width:44px;height:44px;font-size:22px;}
+  #zoom-hint{display:none;}
+  /* ── mobile HUD layout fixes ── */
+  #hud-top{flex-wrap:wrap;gap:5px;padding:8px 8px 6px;align-items:stretch;}
+  /* 첫 줄: 연료(flex:2) 속도(flex:1) 시간(flex:1) 한 줄 고정 */
+  #hud-top>*{flex-shrink:1;}
+  #fuel-bar-wrap{flex:2 1 0;min-width:0;}
+  .hud-panel:nth-child(2){flex:1 1 0;min-width:0;}
+  .hud-panel:nth-child(3){flex:1 1 0;min-width:0;}
+  .hud-panel{padding:5px 8px;}
+  .hud-label{font-size:9px;letter-spacing:.08em;margin-bottom:2px;}
+  .hud-value{font-size:15px;}
+  #fuel-bar-bg{height:5px;margin-top:2px;}
+  #fuel-bar{height:5px;}
+  #fuel-val{font-size:15px;}
+  #fuel-val-num{font-size:8px;}
+  #vel-indicator{gap:5px;}
+  #vel-dot{width:10px;height:10px;}
+  #mission-panel{width:100%;max-width:100%;order:10;margin-top:2px;pointer-events:auto;cursor:pointer;flex:none;}
+  #items-panel{order:11;flex:none;}
+  .mission-item{font-size:13px;}
+  .mp-item{font-size:11px;padding:6px 10px;gap:8px;}
+  .mp-dot{width:10px;height:10px;}
+  /* mission collapsible */
+  #mission-panel.collapsed #mission-list{display:none;}
+  #mission-panel.collapsed #mission-summary{display:flex;}
+  #mission-panel.collapsed #mission-toggle-icon::after{content:'▼';}
+  #mission-toggle-icon::after{content:'▲';}
+  #mission-summary{display:none;align-items:center;gap:8px;margin-top:3px;}
+  #mission-panel-header{display:flex;align-items:center;}
+  #mission-panel-header .hud-label{margin-bottom:0;flex:1;}
+  #mission-toggle-icon{font-size:9px;opacity:.45;font-family:'Orbitron',monospace;}
+}
+/* wider screens: keep buttons at top-right but give HUD breathing room */
+@media(min-width:769px){
+  #hud-top{padding-right:200px;}
+}
+#ov-title .card{position:relative;overflow:hidden;}
+#ov-title .card::after{content:'';position:absolute;top:-60%;left:-60%;width:220%;height:220%;
+  background:conic-gradient(from 0deg,transparent,rgba(79,195,247,.03),transparent,rgba(79,195,247,.03),transparent);
+  animation:titleSpin 30s linear infinite;pointer-events:none;}
+@keyframes titleSpin{to{transform:rotate(360deg);}}
+#ov-title .card>*{position:relative;z-index:1;}
+#ov-title h1{font-size:32px;background:linear-gradient(135deg,#4fc3f7,#00e5ff,#7c4dff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  text-shadow:none;animation:titleGlow 3s ease-in-out infinite;}
+@keyframes titleGlow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
+@keyframes subGradShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+#ov-title .title-ornament{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:8px;font-size:10px;color:rgba(79,195,247,.3);font-family:'Orbitron',monospace;letter-spacing:.3em;}
+#ov-title .title-ornament span{flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(79,195,247,.2),transparent);}
+#ov-title .planet-decoration{display:flex;justify-content:center;gap:8px;margin-bottom:20px;}
+#ov-title .planet-dot{width:8px;height:8px;border-radius:50%;animation:dotFloat 2s ease-in-out infinite;}
+#ov-title .planet-dot:nth-child(1){background:#b5b5b5;animation-delay:0s;}
+#ov-title .planet-dot:nth-child(2){background:#e8c26e;animation-delay:.3s;}
+#ov-title .planet-dot:nth-child(3){background:#4a9fd4;animation-delay:.6s;}
+#ov-title .planet-dot:nth-child(4){background:#c1440e;animation-delay:.9s;}
+#ov-title .planet-dot:nth-child(5){background:#c8a882;animation-delay:1.2s;}
+#ov-title .planet-dot:nth-child(6){background:#d4bc78;animation-delay:1.5s;}
+@keyframes dotFloat{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-6px);opacity:.9}}
+.btn{display:inline-block;background:linear-gradient(135deg,#0a6ebd,#4fc3f7);color:#fff;font-family:'Orbitron',monospace;font-size:12px;font-weight:700;letter-spacing:.15em;padding:14px 36px;border-radius:40px;border:none;cursor:pointer;transition:transform .15s,box-shadow .15s;}
+.btn:hover{transform:translateY(-2px);box-shadow:0 0 24px #4fc3f744;}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:rgba(255,255,255,.6);margin-left:12px;}
+.btn-ghost:hover{background:rgba(255,255,255,.05);}
+/* 모든 카드 공통: 카드 직속 버튼은 동일 너비·가운데 정렬·일정 간격 (PC/모바일 통일) */
+.card>.btn{display:block;width:100%;max-width:320px;margin:10px auto 0;white-space:nowrap;}
+/* 시작화면 버튼: 동일 너비·정렬된 레이아웃 */
+#ov-title .title-actions{display:flex;flex-direction:column;gap:10px;align-items:stretch;max-width:300px;margin:4px auto 0;}
+#ov-title .title-actions .btn{margin:0;width:100%;white-space:nowrap;}
+#ov-title .title-actions-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+#ov-title .title-actions-grid .btn{padding:14px 8px;font-size:11px;letter-spacing:.08em;}
+.hint-box{background:rgba(255,170,0,.08);border:1px solid rgba(255,170,0,.25);border-radius:10px;padding:12px 16px;font-size:12px;color:rgba(255,200,100,.8);line-height:1.6;margin-bottom:24px;text-align:left;}
+#stage-title{font-family:'Orbitron',monospace;font-size:11px;color:var(--warn);letter-spacing:.15em;margin-bottom:8px;}
+.mission-preview{display:flex;flex-direction:column;gap:8px;margin-bottom:24px;}
+.mp-item{display:flex;align-items:center;gap:10px;font-size:12px;padding:8px 12px;background:rgba(255,255,255,.04);border-radius:8px;}
+.mp-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+#result-score{font-family:'Orbitron',monospace;font-size:36px;font-weight:900;color:var(--success);margin:12px 0;}
+#result-detail{font-size:12px;color:rgba(255,255,255,.5);line-height:1.8;margin-bottom:24px;}
+/* 최종점수(4c) */
+.final-score-box{background:linear-gradient(135deg,rgba(79,195,247,.12),rgba(255,210,74,.10));border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin:14px 0;}
+.final-score-box .fs-label{font-size:11px;letter-spacing:.15em;color:var(--accent);font-weight:700;margin-bottom:2px;}
+.final-score-box .fs-value{font-family:'Orbitron',monospace;font-size:40px;font-weight:900;color:#ffd24a;line-height:1.1;}
+.final-score-box .fs-break{font-size:11px;color:rgba(255,255,255,.55);margin-top:6px;line-height:1.6;}
+/* 로컬 랭킹 */
+#ranking-list{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;max-height:56vh;overflow-y:auto;}
+.rank-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.03);}
+.rank-row.me{border-color:var(--accent);background:rgba(79,195,247,.10);}
+.rank-pos{font-family:'Orbitron',monospace;font-size:18px;font-weight:900;width:30px;text-align:center;color:rgba(255,255,255,.7);}
+.rank-pos.top1{color:#ffd24a;}.rank-pos.top2{color:#cfd6e0;}.rank-pos.top3{color:#e0a85a;}
+.rank-mid{flex:1;text-align:left;}
+.rank-name{font-weight:700;font-size:15px;}
+.rank-meta{font-size:11px;color:rgba(255,255,255,.5);}
+.rank-score{font-family:'Orbitron',monospace;font-size:20px;font-weight:900;color:#ffd24a;}
+.ranking-empty{color:rgba(255,255,255,.5);padding:20px;}
+/* 튜토리얼 코치 말풍선 */
+#tut-coach{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(10px);
+  max-width:min(520px,90vw);z-index:40;pointer-events:none;opacity:0;transition:opacity .35s,transform .35s;}
+#tut-coach.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#tut-coach .coach-bubble{background:linear-gradient(135deg,rgba(20,32,60,.96),rgba(30,20,55,.96));
+  border:2px solid var(--accent);border-radius:16px;padding:14px 18px;font-size:15px;line-height:1.55;
+  color:#fff;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5);font-weight:600;}
+#tut-coach.praise .coach-bubble{border-color:#44ff88;background:linear-gradient(135deg,rgba(20,55,35,.96),rgba(25,50,40,.96));}
+#tut-coach .coach-emoji{font-size:22px;margin-bottom:2px;}
+@media(max-width:768px){#tut-coach{bottom:84px;}#tut-coach .coach-bubble{font-size:13.5px;padding:12px 14px;}}
+.tut-pulse{animation:tutPulse 1s ease-in-out 3;border-radius:10px;}
+@keyframes tutPulse{0%,100%{box-shadow:0 0 0 0 rgba(79,195,247,0);}50%{box-shadow:0 0 0 6px rgba(79,195,247,.55);}}
+
+/* ── TOAST ── */
+#toast{position:fixed;top:30%;left:50%;transform:translate(-50%,-50%) scale(.8);font-family:'Orbitron',monospace;font-size:clamp(13px,4vw,20px);font-weight:700;letter-spacing:.08em;padding:14px clamp(16px,5vw,40px);border-radius:50px;pointer-events:none;opacity:0;transition:opacity .3s,transform .3s;z-index:100;max-width:90vw;text-align:center;overflow-wrap:break-word;}
+#toast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+#toast.success{background:rgba(0,200,80,.15);border:1px solid rgba(0,200,80,.4);color:var(--success);}
+#toast.danger{background:rgba(255,50,50,.15);border:1px solid rgba(255,50,50,.4);color:var(--danger);}
+#toast.info{background:rgba(79,195,247,.12);border:1px solid rgba(79,195,247,.3);color:var(--accent);}
+
+/* ── ZOOM BUTTONS ── */
+#zoom-btns{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:20;}
+.zoom-btn{width:36px;height:36px;background:var(--ui-glass);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);transition:background .15s;}
+.zoom-btn:hover{background:rgba(79,195,247,.15);}
+#zoom-hint{position:fixed;bottom:20px;left:20px;font-size:10px;color:rgba(255,255,255,.3);font-family:'Orbitron',monospace;letter-spacing:.08em;z-index:20;line-height:1.7;pointer-events:none;}
+#btn-return-ship{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;background:rgba(79,195,247,.18);border:1px solid var(--accent);border-radius:30px;color:#fff;font-family:'Orbitron',monospace;font-size:13px;font-weight:700;letter-spacing:.05em;padding:12px 22px;cursor:pointer;backdrop-filter:blur(8px);z-index:45;box-shadow:0 4px 24px rgba(0,0,0,.4);}
+#btn-return-ship:hover{background:rgba(79,195,247,.32);}
+@media(max-width:768px){#btn-return-ship{font-size:14px;padding:14px 24px;}}
+/* ── HUD ACTION BUTTONS ── */
+#hud-actions{position:fixed;top:16px;right:20px;display:flex;gap:8px;z-index:40;pointer-events:auto;}
+#btn-pause{background:rgba(255,255,255,.06);border-color:var(--border);}
+#ov-pause .card{max-width:340px;}
+/* 일시정지 버튼 정렬은 공통 규칙(.card>.btn)을 따른다 */
+.hud-action-btn{background:var(--ui-glass);border:1px solid var(--border);border-radius:10px;color:rgba(255,255,255,.8);font-family:'Orbitron',monospace;font-size:10px;letter-spacing:.1em;padding:8px 16px;cursor:pointer;backdrop-filter:blur(8px);transition:all .2s;white-space:nowrap;}
+.hud-action-btn:hover{background:rgba(79,195,247,.2);border-color:var(--accent);color:#fff;box-shadow:0 0 16px rgba(79,195,247,.15);}
+.hud-action-btn.hidden{display:none;}
+/* ── SHOP ── */
+#ov-shop .card{max-width:600px;position:relative;overflow:hidden;border-color:rgba(79,195,247,.3);box-shadow:0 0 60px rgba(79,195,247,.08),inset 0 0 80px rgba(79,195,247,.03);}
+#ov-shop .card::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;
+  background:conic-gradient(from 0deg,transparent,rgba(79,195,247,.03),transparent,rgba(79,195,247,.03),transparent);
+  animation:shopRotate 20s linear infinite;pointer-events:none;}
+@keyframes shopRotate{to{transform:rotate(360deg);}}
+/* color picker */
+.color-picker-card{max-width:420px;border-color:rgba(79,195,247,.3);}
+.color-picker-card h2{font-size:16px;margin-bottom:14px;}
+#color-picker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px;}
+.color-swatch{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 8px 10px;text-align:center;cursor:pointer;transition:all .2s;}
+.color-swatch:hover{border-color:rgba(79,195,247,.4);background:rgba(255,255,255,.08);}
+.color-swatch .swatch-dot{width:40px;height:40px;border-radius:10px;margin:0 auto 8px;border:1px solid rgba(255,255,255,.1);}
+.color-swatch .swatch-name{font-size:11px;color:rgba(255,255,255,.7);margin-bottom:2px;}
+.color-swatch .swatch-status{font-size:10px;color:rgba(255,255,255,.35);}
+.color-swatch.active{border-color:#4fc3f7;background:rgba(79,195,247,.1);}
+.color-swatch.active .swatch-dot{box-shadow:0 0 16px rgba(79,195,247,.4);}
+.shop-scroll{position:relative;z-index:1;max-height:340px;overflow-y:auto;margin-bottom:16px;padding-right:4px;}
+.shop-scroll::-webkit-scrollbar{width:4px;}
+.shop-scroll::-webkit-scrollbar-track{background:transparent;}
+.shop-scroll::-webkit-scrollbar-thumb{background:rgba(79,195,247,.3);border-radius:4px;}
+/* robot vendor */
+#shop-robot{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:14px 18px;background:rgba(79,195,247,.06);border-radius:14px;border:1px solid rgba(79,195,247,.15);position:relative;z-index:1;}
+.shop-robot-avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#1a3a5a,#0a1a2a);
+  border:2px solid rgba(79,195,247,.4);position:relative;flex-shrink:0;overflow:hidden;
+  box-shadow:0 0 20px rgba(79,195,247,.15);}
+.shop-robot-avatar::before{content:'';position:absolute;top:-6px;left:50%;transform:translateX(-50%);
+  width:8px;height:8px;border-radius:50%;background:#4fc3f7;box-shadow:0 0 10px #4fc3f7;}
+.shop-robot-eye{position:absolute;width:10px;height:12px;border-radius:50%;background:#4fc3f7;top:18px;
+  box-shadow:0 0 12px #4fc3f7;animation:blink 3s ease-in-out infinite;}
+.shop-robot-eye.left{left:13px;}.shop-robot-eye.right{right:13px;}
+@keyframes blink{0%,94%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+.shop-robot-mouth{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  width:20px;height:4px;border-radius:4px;background:rgba(79,195,247,.6);
+  box-shadow:0 0 6px rgba(79,195,247,.3);}
+.shop-robot-speech{flex:1;font-size:13px;color:rgba(255,255,255,.85);line-height:1.6;font-family:'Orbitron',monospace;}
+.shop-robot-speech .speaker{color:#4fc3f7;font-weight:700;}
+/* item list */
+.shop-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:rgba(255,255,255,.04);border-radius:12px;margin-bottom:8px;border:1px solid rgba(255,255,255,.04);transition:all .2s;position:relative;z-index:1;}
+.shop-item:hover{background:rgba(255,255,255,.07);border-color:rgba(79,195,247,.15);}
+.shop-item-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);}
+.shop-item-icon.fuel{background:linear-gradient(135deg,rgba(255,170,0,.12),rgba(255,170,0,.04));border-color:rgba(255,170,0,.2);}
+.shop-item-icon.nav{background:linear-gradient(135deg,rgba(79,195,247,.12),rgba(79,195,247,.04));border-color:rgba(79,195,247,.2);}
+.shop-item-icon.shield{background:linear-gradient(135deg,rgba(68,255,136,.12),rgba(68,255,136,.04));border-color:rgba(68,255,136,.2);}
+.shop-item-icon.time{background:linear-gradient(135deg,rgba(200,150,255,.12),rgba(200,150,255,.04));border-color:rgba(200,150,255,.2);}
+.shop-item-icon.color{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.06);}
+.shop-item-info{flex:1;min-width:0;}
+.shop-item-name{font-size:13px;color:#fff;font-family:'Orbitron',monospace;display:flex;align-items:center;gap:6px;}
+.shop-item-desc{font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;}
+.shop-item-level{font-size:9px;color:var(--accent);font-family:'Orbitron',monospace;background:rgba(79,195,247,.08);padding:2px 8px;border-radius:6px;}
+.shop-buy-btn{padding:8px 18px;font-size:11px;flex-shrink:0;}
+.shop-buy-btn.owned{background:rgba(68,255,136,.12);border-color:var(--success);color:var(--success);pointer-events:none;}
+.shop-buy-btn.soldout{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.3);pointer-events:none;}
+#shop-pts-display{font-family:'Orbitron',monospace;font-size:14px;color:var(--warn);margin-bottom:16px;text-align:center;position:relative;z-index:1;}
+#shop-pts-display span{font-size:22px;color:#ffcc44;text-shadow:0 0 20px rgba(255,204,68,.2);}
+#shop-close-row{display:flex;gap:10px;justify-content:center;position:relative;z-index:1;}
+#items-panel .item-badge{display:flex;align-items:center;gap:3px;background:rgba(255,255,255,.06);border-radius:6px;padding:3px 8px;font-size:11px;font-family:'Orbitron',monospace;color:rgba(255,255,255,.7);}
+#items-panel .item-badge .count{font-size:9px;color:var(--accent);margin-left:2px;}
+#shop-close-row .btn{min-width:140px;}
+.shop-visual-badge{display:inline-flex;align-items:center;gap:4px;}
+.dev-btn{background:rgba(255,80,80,.1);border:1px dashed rgba(255,80,80,.3);border-radius:6px;color:rgba(255,100,100,.5);font-family:'Orbitron',monospace;font-size:9px;padding:4px 10px;cursor:pointer;transition:all .2s;}
+.dev-btn:hover{background:rgba(255,80,80,.2);color:rgba(255,100,100,.8);}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="hud-top">
+    <div class="hud-panel" id="fuel-bar-wrap">
+      <div class="hud-label">FUEL <span id="fuel-lv-badge" style="font-size:8px;color:var(--accent);opacity:0;"></span></div>
+      <div class="hud-value" id="fuel-val">100%</div>
+      <div id="fuel-val-num" style="font-size:9px;color:rgba(255,255,255,.4);text-align:right;margin-top:-2px;"></div>
+      <div id="fuel-bar-bg"><div id="fuel-bar" style="width:100%"></div></div>
+    </div>
+    <div class="hud-panel">
+      <div class="hud-label">VELOCITY</div>
+      <div class="hud-value" id="vel-indicator"><span id="vel-dot"></span><span id="vel-val">0.0</span></div>
+    </div>
+    <div class="hud-panel" style="position:relative;">
+      <div class="hud-label">TIME</div>
+      <div class="hud-value" id="timer-val">--:--</div>
+      <div id="time-bonus-flash" style="position:absolute;bottom:-4px;right:0;font-size:11px;color:#88ff44;font-family:'Orbitron',monospace;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;"></div>
+    </div>
+    <div class="hud-panel" id="points-panel">
+      <div class="hud-label">💰 보유 P</div>
+      <div class="hud-value" id="points-val">0</div>
+    </div>
+    <div class="hud-panel" id="mission-panel">
+      <div id="mission-panel-header">
+        <div class="hud-label">MISSION</div>
+        <div id="mission-toggle-icon"></div>
+      </div>
+      <!-- collapsed: only current mission shown -->
+      <div id="mission-summary"></div>
+      <!-- expanded: full list -->
+      <div id="mission-list"></div>
+    </div>
+    <div class="hud-panel" id="items-panel" style="display:none;">
+      <div class="hud-label">ITEMS</div>
+      <div id="items-display" style="display:flex;gap:6px;margin-top:4px;"></div>
+    </div>
+  </div>
+</div>
+
+<div id="hud-actions">
+  <button class="hud-action-btn hidden" id="btn-use-timebonus">⏱ +45s</button>
+  <button class="hud-action-btn hidden" id="btn-pause">⏸ 일시정지</button>
+</div>
+
+<div id="tut-coach"><div class="coach-bubble"></div></div>
+
+<!-- OVERLAYS -->
+<div class="overlay" id="ov-title">
+  <div class="card">
+    <div class="title-ornament"><span></span>★<span></span></div>
+    <h1>GRAVITY LANDING</h1>
+    <p class="sub" style="font-size:16px;font-weight:700;background:linear-gradient(135deg,#ffd700,#ff6347,#ffd700) 0% 50% / 200% 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:subGradShift 4s ease-in-out infinite;">착륙의 기술</p>
+    <div class="planet-decoration">
+      <div class="planet-dot"></div>
+      <div class="planet-dot"></div>
+      <div class="planet-dot"></div>
+      <div class="planet-dot"></div>
+      <div class="planet-dot"></div>
+      <div class="planet-dot"></div>
+    </div>
+    <p>드래그로 우주선을 조종해<br>목표 행성에 착륙하세요.</p>
+    <input id="name-input" type="text" maxlength="12" placeholder="이름 (비우면 player)" autocomplete="off">
+    <div class="title-actions">
+      <button class="btn" id="btn-newgame">🚀 새 게임 시작</button>
+      <button class="btn btn-ghost" id="btn-continue">📂 이어하기</button>
+      <div class="title-actions-grid">
+        <button class="btn btn-ghost" id="btn-title-codex">📖 천체 도감</button>
+        <button class="btn btn-ghost" id="btn-title-ranking">🏆 랭킹</button>
+        <button class="btn btn-ghost" id="btn-title-settings">🔊 소리 설정</button>
+        <button class="btn btn-ghost" id="btn-skip">⏭ 튜토리얼 건너뛰기</button>
+      </div>
+    </div>
+    <div style="margin-top:24px;font-size:9px;color:rgba(255,255,255,.35);font-family:'Orbitron',monospace;letter-spacing:.1em;">Junmo / Seowon / Daddy</div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-stage">
+  <div class="card">
+    <div id="stage-title">TUTORIAL</div>
+    <h2 id="stage-name"></h2>
+    <div class="hint-box" id="stage-hint"></div>
+    <div class="mission-preview" id="stage-targets"></div>
+    <button class="btn" id="btn-go">출발!</button>
+  </div>
+</div>
+
+<style>
+#ov-hub .card{max-width:680px;width:94%;}
+#hub-summary{font-size:12px;color:rgba(255,255,255,.8);font-family:'Orbitron',monospace;margin:-4px 0 14px;line-height:1.7;}
+#hub-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.hub-tile{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px 6px 10px;text-align:center;cursor:pointer;transition:.15s;position:relative;}
+.hub-tile:hover{background:rgba(255,255,255,.12);transform:translateY(-2px);}
+.hub-tile.locked{opacity:.4;cursor:not-allowed;filter:grayscale(.7);}
+.hub-tile.locked:hover{transform:none;background:rgba(255,255,255,.05);}
+.hub-tile.done{border-color:#ffd24a55;background:rgba(255,210,74,.08);}
+.hub-dot{width:38px;height:38px;border-radius:50%;margin:0 auto 6px;box-shadow:0 0 12px rgba(255,255,255,.15);}
+canvas.hub-dot{position:static;inset:auto;width:44px;height:44px;border-radius:0;box-shadow:none;background:transparent;display:block;margin:0 auto 6px;} /* 전역 canvas{position:fixed} 무효화 + 원형클립 제거 */
+.hub-num{font-size:9px;font-family:'Orbitron',monospace;color:rgba(255,255,255,.45);letter-spacing:.08em;}
+.hub-name{font-size:14px;font-weight:700;margin:2px 0 4px;}
+.hub-stars{font-size:12px;letter-spacing:1px;min-height:16px;color:rgba(255,255,255,.5);}
+.hub-best{font-size:10px;font-family:'Orbitron',monospace;color:#4fc3f7;margin-top:3px;min-height:13px;letter-spacing:.03em;}
+#hub-hidden{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;}
+.hidden-tile{border-color:#b06cff55;background:rgba(176,108,255,.1);}
+.hidden-tile.done{border-color:#7de88855;background:rgba(125,232,136,.08);}
+.hub-hidden-label{font-size:12px;color:#cda6ff;font-family:'Orbitron',monospace;margin:14px 0 4px;letter-spacing:.08em;}
+@media(max-width:560px){#hub-grid{grid-template-columns:repeat(2,1fr);}#hub-hidden{grid-template-columns:repeat(3,1fr);}}
+</style>
+<div class="overlay hidden" id="ov-hub">
+  <div class="card">
+    <h2>🗺 태양계 지도</h2>
+    <div id="hub-summary"></div>
+    <div id="hub-grid"></div>
+    <div id="hub-hidden-label" class="hub-hidden-label" style="display:none">✨ 히든 미션 — 먼 왜소행성</div>
+    <div id="hub-hidden" style="display:none"></div>
+    <button class="btn btn-ghost" id="btn-hub-shop" style="margin-top:16px">🛸 상점</button>
+    <button class="btn btn-ghost" id="btn-hub-codex">📖 도감</button>
+    <button class="btn btn-ghost" id="btn-hub-menu">🏠 메인메뉴로</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-pause">
+  <div class="card">
+    <h2>⏸ 일시정지</h2>
+    <button class="btn" id="btn-resume">▶ 계속하기</button>
+    <button class="btn btn-ghost hidden" id="btn-pause-skip">⏭ 튜토리얼 건너뛰기</button>
+    <button class="btn btn-ghost" id="btn-pause-settings">🔊 소리 설정</button>
+    <button class="btn btn-ghost" id="btn-pause-codex">📖 도감</button>
+    <button class="btn btn-ghost" id="btn-pause-restart">↻ 재시작</button>
+    <button class="btn btn-ghost" id="btn-pause-mainmenu">🏠 메인메뉴로 가기</button>
+  </div>
+</div>
+
+<style>
+#ov-settings .set-row{margin:14px 0;text-align:left;}
+#ov-settings .set-row label{display:flex;justify-content:space-between;font-size:13px;color:rgba(255,255,255,.85);font-family:'Orbitron',monospace;margin-bottom:6px;}
+#ov-settings select{width:100%;margin-top:4px;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:10px;color:#fff;font-family:'Orbitron',monospace;font-size:13px;outline:none;cursor:pointer;}
+#ov-settings select:focus{border-color:var(--accent);}
+#ov-settings select option{background:#0b1430;color:#fff;}
+#ov-settings input[type=range]{width:100%;height:6px;border-radius:3px;background:rgba(255,255,255,.15);outline:none;-webkit-appearance:none;appearance:none;}
+#ov-settings input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#4fc3f7;cursor:pointer;box-shadow:0 0 6px rgba(79,195,247,.7);}
+#ov-settings input[type=range]::-moz-range-thumb{width:18px;height:18px;border:none;border-radius:50%;background:#4fc3f7;cursor:pointer;}
+</style>
+<div class="overlay hidden" id="ov-settings">
+  <div class="card" style="max-width:380px;">
+    <h2>🔊 소리 설정</h2>
+    <div class="set-row">
+      <label>🎵 배경음 <span id="set-music-val">30%</span></label>
+      <input type="range" id="set-music" min="0" max="100" value="30">
+    </div>
+    <div class="set-row">
+      <label>🎶 배경음악 선택</label>
+      <select id="set-track"></select>
+    </div>
+    <div class="set-row">
+      <label>💥 효과음 <span id="set-sfx-val">70%</span></label>
+      <input type="range" id="set-sfx" min="0" max="100" value="70">
+    </div>
+    <button class="btn" id="btn-settings-close" style="margin-top:14px;width:100%">닫기</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-ending">
+  <div class="card">
+    <div class="title-ornament"><span></span>🏆<span></span></div>
+    <h1 id="ending-title">태양계 정복!</h1>
+    <p class="sub">SOLAR SYSTEM CONQUERED</p>
+    <div id="ending-planets"></div>
+    <p id="ending-msg">태양계의 모든 행성에 착륙했어요!<br>정말 훌륭한 우주 비행사예요 👏</p>
+    <div id="ending-final"></div>
+    <div id="ending-stats"></div>
+    <button class="btn" id="btn-ending-ranking">🏆 랭킹 보기</button>
+    <button class="btn btn-ghost" id="btn-ending-menu">🏠 메인메뉴로</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-codex">
+  <div class="card" id="codex-card">
+    <h2>📖 천체 도감 <span id="codex-progress"></span></h2>
+    <div id="codex-grid"></div>
+    <div id="codex-detail"></div>
+    <button class="btn" id="btn-codex-close">닫기</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-profiles">
+  <div class="card">
+    <h2>📂 이어하기</h2>
+    <div id="profiles-list"></div>
+    <button class="btn btn-ghost" id="btn-profiles-back">← 뒤로</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-ranking">
+  <div class="card">
+    <h2>🏆 로컬 랭킹</h2>
+    <p class="sub">이 기기의 우주 비행사들 · 최종점수 순</p>
+    <div id="ranking-list"></div>
+    <button class="btn btn-ghost" id="btn-ranking-back">← 뒤로</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-result">
+  <div class="card">
+    <h2 id="result-title"></h2>
+    <div id="result-score"></div>
+    <div id="result-final"></div>
+    <div id="result-detail"></div>
+    <button class="btn" id="btn-next">다음 미션</button>
+    <button class="btn btn-ghost" id="btn-go-shop">🛸 상점</button>
+    <button class="btn btn-ghost" id="btn-result-ranking">🏆 랭킹</button>
+    <button class="btn btn-ghost" id="btn-result-codex">📖 도감</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-planet-info">
+  <div class="card">
+    <div id="pi-orb"></div>
+    <h2 id="pi-name"></h2>
+    <div id="pi-tagline"></div>
+    <div id="pi-stars"></div>
+    <div id="pi-facts"></div>
+    <div id="pi-note"></div>
+    <button class="btn" id="btn-pi-continue">다음 미션으로 →</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-shop">
+  <div class="card">
+    <h2>🛸 우주 정비소</h2>
+    <div id="shop-robot">
+      <div class="shop-robot-avatar">
+        <div class="shop-robot-eye left"></div>
+        <div class="shop-robot-eye right"></div>
+        <div class="shop-robot-mouth"></div>
+      </div>
+      <div class="shop-robot-speech" id="shop-dialog"><span class="speaker">⚙ 정비 로봇:</span> 어서 오세요, 선장님! 무엇을 도와드릴까요?</div>
+    </div>
+    <div id="shop-pts-display">보유 포인트: <span id="shop-points">0</span>P</div>
+    <div class="shop-scroll" id="shop-list"></div>
+    <div id="shop-close-row">
+      <button class="btn" id="btn-shop-close">다음 라운드 시작</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-color-picker">
+  <div class="card color-picker-card">
+    <h2>🎨 우주선 도색</h2>
+    <p style="font-size:11px;color:rgba(255,255,255,.5);margin:-8px 0 14px">원하는 색상을 선택하세요 (30P)</p>
+    <div id="color-picker-grid"></div>
+    <button class="btn" id="btn-color-close" style="margin-top:14px;width:100%">닫기</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="ov-confirm">
+  <div class="card" style="max-width:380px;">
+    <p id="confirm-msg" style="font-size:15px;line-height:1.8;color:rgba(255,255,255,.85);margin-bottom:24px;"></p>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button class="btn" id="btn-confirm-ok">확인</button>
+      <button class="btn btn-ghost" id="btn-confirm-cancel">취소</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="zoom-btns">
+  <button class="zoom-btn" id="btn-zoom-in">＋</button>
+  <button class="zoom-btn" id="btn-zoom-out">－</button>
+  <button class="zoom-btn" id="btn-zoom-fit" title="전체보기">⊙</button>
+  <button class="zoom-btn" id="btn-sound" title="소리 켜기/끄기">🔊</button>
+</div>
+<button id="btn-return-ship" style="display:none;">🚀 우주선으로 복귀</button>
+<button class="dev-btn" id="btn-dev-complete" style="position:fixed;bottom:8px;left:50%;transform:translateX(-50%);z-index:45;">🛠 라운드 완료 (테스트)</button>
+<div id="zoom-hint">🖱 휠: 줌 · 드래그 유지: 지속추진</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  CANVAS SETUP
+// ═══════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, CX, CY;
+// roundRect polyfill for older mobile browsers
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    r=Math.min(r,Math.min(w,h)/2);
+    this.moveTo(x+r,y);this.lineTo(x+w-r,y);this.quadraticCurveTo(x+w,y,x+w,y+r);
+    this.lineTo(x+w,y+h-r);this.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    this.lineTo(x+r,y+h);this.quadraticCurveTo(x,y+h,x,y+h-r);
+    this.lineTo(x,y+r);this.quadraticCurveTo(x,y,x+r,y);this.closePath();
+  };
+}
+function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight;CX=W/2;CY=H/2;}
+resize();
+window.addEventListener('resize',resize);
+
+// ═══════════════════════════════════════════════
+//  PLANET DATA
+// ═══════════════════════════════════════════════
+const PLANET_DATA = [
+  {name:'태양',en:'Sun',     orbitR:0,    size:80, period:999999, color:'#ffbb00', gravity:0.8,  landSpeed:0},
+  {name:'수성',en:'Mercury', orbitR:400,  size:36, period:36,   color:'#b5b5b5', gravity:0.16, landSpeed:0.6},
+  {name:'금성',en:'Venus',   orbitR:620,  size:56, period:90,   color:'#e8c26e', gravity:0.22, landSpeed:0.5},
+  {name:'지구',en:'Earth',   orbitR:860,  size:60, period:150,  color:'#4a9fd4', gravity:0.25, landSpeed:0.5, satellites:[
+    {name:'달',size:14, orbitR:120, period:22, color:'#d0d0d0', gravity:0.045}
+  ]},
+  {name:'화성',en:'Mars',    orbitR:1120, size:44, period:280,  color:'#c1440e', gravity:0.18, landSpeed:0.6, satellites:[
+    {name:'포보스',size:7, orbitR:78,  period:11, color:'#a8917a', gravity:0.022},
+    {name:'데이모스',size:6, orbitR:112, period:19, color:'#9a8470', gravity:0.02}
+  ]},
+  {name:'목성',en:'Jupiter', orbitR:1480, size:110, period:900, color:'#c8a882', gravity:0.45, landSpeed:0.32, satellites:[
+    {name:'이오',size:12,   orbitR:155, period:13, color:'#e8d98a', gravity:0.025},
+    {name:'유로파',size:11, orbitR:190, period:19, color:'#cfd6e0', gravity:0.025},
+    {name:'가니메데',size:16, orbitR:230, period:28, color:'#b5a896', gravity:0.03},
+    {name:'칼리스토',size:15, orbitR:275, period:40, color:'#8f8270', gravity:0.028}
+  ]},
+  {name:'토성',en:'Saturn',  orbitR:1840, size:92, period:1350, color:'#d4bc78', gravity:0.35, landSpeed:0.36, ring:true, satellites:[
+    {name:'타이탄',size:16, orbitR:245, period:32, color:'#e0a85a', gravity:0.05},
+    {name:'엔셀라두스',size:8, orbitR:310, period:24, color:'#eaf4f6', gravity:0.03}
+  ]},
+  {name:'천왕성',en:'Uranus',orbitR:2180, size:72, period:2250, color:'#7de8e8', gravity:0.28, landSpeed:0.38, satellites:[
+    {name:'티타니아',size:12, orbitR:135, period:25, color:'#bfe6e6', gravity:0.04},
+    {name:'오베론',size:11, orbitR:178, period:40, color:'#9fc4c4', gravity:0.04}
+  ]},
+  {name:'해왕성',en:'Neptune',orbitR:2520,size:68, period:3000, color:'#3f54ba', gravity:0.30, landSpeed:0.42, satellites:[
+    {name:'트리톤',size:13, orbitR:128, period:23, color:'#9fb4e8', gravity:0.045}
+  ]},
+];
+
+// 캠페인 정복 순서 (태양 제외, 안쪽→바깥 궤도 순)
+const CAMPAIGN_ORDER = PLANET_DATA.filter(d=>d.orbitR>0).sort((a,b)=>a.orbitR-b.orbitR).map(d=>d.name);
+
+// 추가 천체(왜소행성·혜성) — 착륙 대상 아님, 근접하면 도감 발견. 궤도로 공전.
+// 세레스: 소행성대(화성~목성), 명왕성·에리스: 해왕성 바깥. 혜성: 길쭉한 타원 경로.
+const EXTRA_BODIES = [
+  {name:'세레스', kind:'dwarf', size:16, orbitR:1300, ecc:0,    period:600,  color:'#9a9088'},
+  {name:'명왕성', kind:'dwarf', size:20, orbitR:2900, ecc:0.08, period:3600, color:'#c8b6a0'},
+  {name:'에리스', kind:'dwarf', size:18, orbitR:3300, ecc:0.12, period:4200, color:'#d8d4cc'},
+  {name:'핼리 혜성', kind:'comet', size:11, orbitR:1500, ecc:0.62, period:1200, color:'#bfe8ff'},
+];
+
+// ═══════════════════════════════════════════════
+//  STAGES (허브/스테이지 재설계) — 시뮬 확정 숫자(§6.5)
+//  land: 착륙해야 할 행성들(순서무관) · visit: [행성,위성] 조사 방문(근접) · collect: 쓰레기 개수 · fuel: 시작연료
+// ═══════════════════════════════════════════════
+// fuel: 쓰레기 줍기(경유 동선)까지 감안해 시뮬값보다 쿠션을 더 줌(초등학생도 1스테이지 클리어 목표).
+// debrisVals=미션 필수 쓰레기(collect개), bonusVals=옵션 보너스 쓰레기(돈·청소점수만, 잘하면 더 벌어 내비 구매).
+const STAGES = [
+  {name:'수성',  land:['수성'],            visit:[],                                                          collect:2, fuel:60,  debrisVals:[10,15],    bonusVals:[15,15]},
+  {name:'금성',  land:['금성'],            visit:[],                                                          collect:2, fuel:60,  debrisVals:[10,15],    bonusVals:[15,15]},
+  {name:'지구',  land:['지구'],            visit:[['지구','달']],                                             collect:2, fuel:60,  debrisVals:[10,15],    bonusVals:[15,20]},
+  {name:'화성',  land:['화성'],            visit:[['화성','포보스'],['화성','데이모스']],                       collect:2, fuel:70,  debrisVals:[15,25],    bonusVals:[20,20]},
+  {name:'목성',  land:['화성','목성'],     visit:[['목성','이오'],['목성','유로파'],['목성','가니메데'],['목성','칼리스토']], collect:0, fuel:95,  debrisVals:[],         bonusVals:[20,25]},
+  {name:'토성',  land:['목성','토성'],     visit:[['토성','타이탄'],['토성','엔셀라두스']],                     collect:2, fuel:110, debrisVals:[25,35],    bonusVals:[25,25]},
+  {name:'천왕성',land:['토성','천왕성'],   visit:[['천왕성','티타니아'],['천왕성','오베론']],                   collect:3, fuel:125, debrisVals:[25,35,45], bonusVals:[25,30]},
+  {name:'해왕성',land:['토성','천왕성','해왕성'], visit:[['해왕성','트리톤']],                                 collect:3, fuel:145, debrisVals:[35,45,60], bonusVals:[30,35]},
+];
+// 히든 미션(8 클리어 후 등장) — 왜소행성 연료 갈틀릿. 1회성, 근접 클리어.
+const HIDDEN_MISSIONS = [
+  {name:'세레스', startFuel:25, pickups:2, pickupAmt:12},
+  {name:'명왕성', startFuel:35, pickups:3, pickupAmt:15},
+  {name:'에리스', startFuel:40, pickups:3, pickupAmt:15},
+];
+const EFF_BASE = 180; // 추진효율 점수 BASE(§6.5(E))
+
+// 스테이지 잠금 해제: 0번 또는 직전 스테이지 클리어 시
+function stageUnlocked(idx){ return idx===0 || (G.clearedStages && G.clearedStages.has(idx-1)); }
+function allStagesCleared(){ return G.clearedStages && STAGES.every((_,i)=>G.clearedStages.has(i)); }
+// 위성 런타임 객체 찾기(현재 위치)
+function findSat(planetName, satName){
+  const pl=G.planets&&G.planets.find(p=>p.data.name===planetName);
+  if(!pl) return null;
+  return pl.sats.find(s=>s.def.name===satName)||null;
+}
+// 미션 완료 판정
+function allLandDone(){ return G.missions&&G.missions.land.every(m=>m.done); }
+function allTasksDone(){
+  if(!G.missions) return false;
+  const v=G.missions.visit.every(m=>m.done);
+  const c=(G.missions.collect.got||0)>=G.missions.collect.need;
+  return v&&c;
+}
+function stageAllDone(){ return allLandDone()&&allTasksDone(); }
+
+// 도감 전체 목록 (25종) — 카테고리별. 행성=착륙 발견, 그 외=근접 발견
+const CODEX_ENTRIES = [
+  {name:'태양', cat:'별'},
+  ...CAMPAIGN_ORDER.map(n=>({name:n, cat:'행성'})),
+  ...PLANET_DATA.flatMap(d=>(d.satellites||[]).map(s=>({name:s.name, cat:'위성'}))),
+  ...EXTRA_BODIES.map(b=>({name:b.name, cat:b.kind==='comet'?'혜성':'왜소행성'})),
+];
+
+// 행성 정보 카드 (착륙 시 표시 · 초등학생 눈높이)
+const PLANET_INFO = {
+  '태양':   {tagline:'태양계의 중심, 스스로 빛나는 별', facts:[
+    '⭐ 행성이 아니라 스스로 빛나는 \'별\'이에요',
+    '🔥 표면 온도가 약 5,500도나 돼요',
+    '🌍 지구가 100만 개 넘게 들어갈 만큼 커요']},
+  '수성':   {tagline:'태양과 가장 가까운, 가장 작은 행성', facts:[
+    '☀️ 태양에 제일 가까이 붙어 있어요',
+    '🔥 낮엔 펄펄 끓고 🧊 밤엔 꽁꽁 얼어요',
+    '🏃 1년(태양 한 바퀴)이 88일로 가장 짧아요']},
+  '금성':   {tagline:'태양계에서 가장 뜨거운 행성', facts:[
+    '🔥 두꺼운 구름이 열을 가둬 가장 뜨거워요',
+    '✨ 밤하늘에서 가장 밝게 빛나 \'샛별\'이라 불러요',
+    '🌍 크기가 지구와 거의 비슷해요']},
+  '지구':   {tagline:'우리가 사는 단 하나뿐인 행성!', facts:[
+    '🌊 표면의 70%가 물(바다)이에요',
+    '🌬️ 숨 쉴 수 있는 공기(산소)가 있어요',
+    '🌙 달이라는 위성 1개를 데리고 다녀요']},
+  '화성':   {tagline:'녹슨 흙으로 붉게 보이는 행성', facts:[
+    '🔴 흙에 녹이 많아 빨갛게 보여요',
+    '🌋 태양계에서 가장 큰 화산이 있어요',
+    '🤖 지구에서 보낸 로봇이 탐험하고 있어요']},
+  '목성':   {tagline:'태양계에서 가장 큰 행성', facts:[
+    '🪐 지구가 1,300개나 들어갈 만큼 커요',
+    '🌀 \'대적점\'이라는 거대한 폭풍이 수백 년째 불어요',
+    '🌙 위성(달)이 90개도 넘어요']},
+  '토성':   {tagline:'아름다운 고리를 두른 행성', facts:[
+    '💍 얼음과 돌로 된 멋진 고리가 있어요',
+    '🪶 아주 가벼워서 큰 물에 넣으면 둥둥 떠요',
+    '🌙 가장 큰 위성 \'타이탄\'을 데리고 있어요']},
+  '천왕성': {tagline:'옆으로 누워 굴러가는 행성', facts:[
+    '🔄 옆으로 누운 채 데굴데굴 돌아요',
+    '🧊 메탄가스 때문에 청록색으로 보여요',
+    '🥶 아주아주 추운 행성이에요']},
+  '해왕성': {tagline:'태양에서 가장 먼 파란 행성', facts:[
+    '🔵 메탄 때문에 예쁜 파란색이에요',
+    '💨 태양계에서 가장 빠른 바람이 불어요',
+    '🔭 눈이 아니라 계산으로 먼저 찾아낸 행성이에요']},
+  // ── 위성들 ──
+  '달':       {tagline:'지구의 하나뿐인 위성', facts:['🌝 지구를 약 27일에 한 바퀴 돌아요','👣 사람이 직접 발을 디딘 유일한 천체예요','🌊 지구의 바닷물(밀물·썰물)을 끌어당겨요']},
+  '포보스':   {tagline:'화성의 큰 위성', facts:['🥔 둥글지 않고 감자처럼 울퉁불퉁해요','⏱ 화성을 하루에 세 바퀴나 돌아요','📉 조금씩 화성으로 가까워지고 있어요']},
+  '데이모스': {tagline:'화성의 작은 위성', facts:['🐢 화성의 두 위성 중 더 작고 느려요','🪨 표면이 먼지로 덮여 매끈해 보여요','🔭 1877년에 발견됐어요']},
+  '이오':     {tagline:'화산이 가장 활발한 위성', facts:['🌋 태양계에서 화산이 가장 많이 터져요','🟡 유황 때문에 노란색이에요','🪐 목성의 강한 중력에 짓눌려 뜨거워져요']},
+  '유로파':   {tagline:'얼음 아래 바다를 품은 위성', facts:['🧊 표면이 온통 얼음으로 덮여 있어요','🌊 얼음 밑에 큰 바다가 있을지도 몰라요','👽 생명체를 찾는 과학자들이 주목해요']},
+  '가니메데': {tagline:'태양계에서 가장 큰 위성', facts:['🥇 수성보다도 더 커요','🧲 위성인데 자기장을 가지고 있어요','🪐 목성의 갈릴레이 위성 중 하나예요']},
+  '칼리스토': {tagline:'운석 구덩이가 가장 많은 위성', facts:['🕳 표면이 운석 구덩이로 가득해요','🧊 아주 오래된 얼음 표면이에요','🪐 목성에서 가장 멀리 도는 갈릴레이 위성']},
+  '타이탄':   {tagline:'대기를 가진 토성의 위성', facts:['🌫 두꺼운 공기(대기)를 가지고 있어요','🏞 메탄으로 된 강과 호수가 있어요','🥇 토성의 위성 중 가장 커요']},
+  '엔셀라두스':{tagline:'물을 뿜는 얼음 위성', facts:['⛲ 얼음 틈에서 물기둥을 우주로 뿜어요','✨ 표면이 새하얀 얼음이라 반짝여요','🌊 얼음 아래 바다가 있어요']},
+  '티타니아': {tagline:'천왕성의 가장 큰 위성', facts:['🥇 천왕성 위성 중 가장 커요','🏔 거대한 협곡과 절벽이 있어요','🧊 얼음과 바위로 이루어졌어요']},
+  '오베론':   {tagline:'천왕성의 바깥 위성', facts:['🕳 어두운 표면에 구덩이가 많아요','🧊 얼음과 바위로 되어 있어요','🔭 1787년에 발견됐어요']},
+  '트리톤':   {tagline:'거꾸로 도는 해왕성 위성', facts:['🔄 행성과 반대 방향으로 공전해요','❄️ 질소 얼음을 뿜는 간헐천이 있어요','🥶 태양계에서 가장 추운 곳 중 하나예요']},
+  // ── 왜소행성 ──
+  '세레스':   {tagline:'소행성대의 왜소행성', facts:['🪨 화성과 목성 사이 소행성대에 있어요','🥇 소행성대에서 가장 커요','💧 얼음으로 된 물이 숨어 있을 수 있어요']},
+  '명왕성':   {tagline:'행성에서 왜소행성이 된 천체', facts:['📉 예전엔 9번째 행성이었어요','💙 표면에 하트 모양 무늬가 있어요','🌙 카론이라는 큰 위성을 데리고 있어요']},
+  '에리스':   {tagline:'아주 멀리 있는 왜소행성', facts:['🛰 명왕성과 크기가 비슷해요','🥶 태양에서 너무 멀어 꽁꽁 얼어 있어요','🔭 이 천체 때문에 명왕성이 행성에서 빠졌어요']},
+  // ── 혜성 ──
+  '핼리 혜성':{tagline:'76년마다 돌아오는 혜성', facts:['☄️ 약 76년에 한 번 지구 곁을 지나가요','💨 태양에 가까워지면 긴 꼬리가 생겨요','👀 다음엔 2061년에 볼 수 있어요']},
+};
+
+// ═══════════════════════════════════════════════
+//  ZOOM CONSTANTS
+// ═══════════════════════════════════════════════
+const MIN_ZOOM = 0.08;
+const MAX_ZOOM = 2.0;
+const AUTO_ZOOM = 1.0; // forced zoom level whenever the ship is moving (not landed)
+const PAN_ZOOM_THRESHOLD = 0.5; // zoom out below this → enter free "browse" (pan) mode
+
+// ═══════════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════════
+const G = {
+  mode: 'title',      // title | tutorial | game
+  tutorialStep: 0,
+  gameRound: 0,
+  planets: [],
+  ship: null,
+  fuel: 100,
+  maxFuel: 100,
+  fuelItems: [],
+  debris: [],
+  particles: [],
+  bgStars: [],
+  missions: {land:[],visit:[],collect:{need:0,got:0}}, // 타입별 미션
+  currentMission: 0,
+  recOrder: [],
+  curStage: null,
+  stageIdx: 0,
+  clearedStages: new Set(), // 클리어한 스테이지 인덱스
+  effScore: {},             // 스테이지별 추진효율 최고점
+  hiddenDone: new Set(),    // 완료한 히든 미션
+  hiddenTarget: null,       // 히든 미션 목표(왜소행성 런타임 객체)
+  hiddenIdx: 0,
+  thrustFrames: 0, flightFrames: 0,
+  timeLeft: 0,
+  timerOn: false,
+  camX: 0, camY: 0,   // camera offset (world → screen)
+  camTargetX: 0, camTargetY: 0,
+  zoom: 1,
+  cameraFollowShip: true, // false = free "browse" mode (camera unbound, ship frozen)
+  gameTime: 0,
+  score: 0,
+  startFuel: 100,
+  paused: false,       // true during stage briefing overlay
+  // shop
+  shopPoints: 0,
+  upgrades: {fuelTank:0, navigator:false, shipColor:null},
+  consumables: {shield:0, timeBonus:0},
+  shields: 0,        // 이번 스테이지 방어막(진입 시 세팅, 스테이지별 리셋)
+  boughtShields: 0,  // 상점에서 산 다음-판용 방어막 예약
+  // profile / save
+  profileName: null,
+  stageStars: {},   // 스테이지별 추진효율 별 등급
+  debrisCleaned: 0, // 누적 청소한 쓰레기 수(점수)
+};
+
+// ═══════════════════════════════════════════════
+//  AUDIO (배경음 + 효과음)
+//  · URL은 첫 실행 때 IndexedDB에 1회 다운로드→캐시 → 다음부턴 캐시 재생(오프라인 OK, 재다운 X)
+//  · 다운로드 실패(CORS/오프라인)면 내장 합성음으로 자동 폴백 → 절대 무음 안 됨
+//  · 음원: Google 사운드 라이브러리(actions.google.com/sounds, 무료·핫링크). 바꾸려면 아래 URL만 교체.
+// ═══════════════════════════════════════════════
+const SOUND_SRC = {
+  music:     '',  // 배경음은 MUSIC_TRACKS(설정에서 선택)로 처리
+  pickup:    'https://actions.google.com/sounds/v1/cartoon/pop.ogg',                            // 아이템/쓰레기 습득
+  explosion: 'https://actions.google.com/sounds/v1/science_fiction/rubble_breaking.ogg',        // 폭발
+  land:      'https://actions.google.com/sounds/v1/science_fiction/high_to_low_sweep.ogg',      // 착륙
+  clear:     '',  // 비우면 합성음(밝은 아르페지오) — 클리어 팡파레
+};
+// 배경음 트랙(Sounds 폴더의 mp3). 설정에서 선택. title = 파일명 ' - ' 앞부분(가수 생략).
+const MUSIC_TRACKS = [
+  {file:'Sounds/Drops of Earth - Aakash Gandhi.mp3',            title:'Drops of Earth'},
+  {file:'Sounds/Nebula - The Grey Room _ Density & Time.mp3',   title:'Nebula'},
+  {file:'Sounds/Turn In The Sun - Simon Herody.mp3',            title:'Turn In The Sun'},
+  {file:'Sounds/Twinkle - The Grey Room _ Density & Time.mp3',  title:'Twinkle'},
+];
+// 선택 곡 재생 실패 시 폴백(같은 폴더 bgm.mp3 → 우주 앰비언트)
+const MUSIC_FALLBACKS = [
+  'bgm.mp3',
+  'https://actions.google.com/sounds/v1/science_fiction/outer_space.ogg',
+];
+function idbOpenAudio(){ return new Promise((res,rej)=>{ try{ const r=indexedDB.open('gl_audio',1); r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains('clips')) r.result.createObjectStore('clips'); }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }catch(e){ rej(e); } }); }
+async function idbGetAudio(key){ try{ const db=await idbOpenAudio(); return await new Promise(res=>{ const tx=db.transaction('clips').objectStore('clips').get(key); tx.onsuccess=()=>res(tx.result||null); tx.onerror=()=>res(null); }); }catch(e){ return null; } }
+async function idbSetAudio(key,val){ try{ const db=await idbOpenAudio(); return await new Promise(res=>{ const tx=db.transaction('clips','readwrite'); tx.objectStore('clips').put(val,key); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); }); }catch(e){ return false; } }
+const AudioFX = {
+  ctx:null, master:null, sfxGain:null, musicGain:null, buffers:{}, on:true, musicSrc:null, musicEl:null, _wantMusic:false,
+  musicVol:0.3, sfxVol:0.7, trackIdx:0, _srcs:null, _expSrc:null, _expEl:null, // 0~1, 설정에서 조절(localStorage 저장)
+  loadVols(){
+    let m=parseFloat(localStorage.getItem('gl_musicvol')); if(!isNaN(m)) this.musicVol=m;
+    let s=parseFloat(localStorage.getItem('gl_sfxvol')); if(!isNaN(s)) this.sfxVol=s;
+    let tk=parseInt(localStorage.getItem('gl_track')); if(!isNaN(tk)&&tk>=0&&tk<MUSIC_TRACKS.length) this.trackIdx=tk;
+  },
+  init(){
+    if(this.ctx) return;
+    this.loadVols();
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    try{ this.ctx=new AC(); }catch(e){ return; }
+    this.master=this.ctx.createGain(); this.master.connect(this.ctx.destination);
+    this.sfxGain=this.ctx.createGain(); this.sfxGain.gain.value=this.sfxVol; this.sfxGain.connect(this.master);
+    this.musicGain=this.ctx.createGain(); this.musicGain.gain.value=this.musicVol; this.musicGain.connect(this.master);
+    this.on=(localStorage.getItem('gl_sound')!=='off');
+    this.master.gain.value=this.on?1.0:0;
+    for(const k in SOUND_SRC){ if(SOUND_SRC[k]) this.loadClip(k, SOUND_SRC[k]); }
+  },
+  setMusicVol(v){ this.musicVol=v; if(this.musicGain) this.musicGain.gain.value=v; if(this.musicEl) this.musicEl.volume=this.on?v:0; try{localStorage.setItem('gl_musicvol',v);}catch(e){} },
+  setSfxVol(v){ this.sfxVol=v; if(this.sfxGain) this.sfxGain.gain.value=v; try{localStorage.setItem('gl_sfxvol',v);}catch(e){} },
+  resume(){ if(this.ctx&&this.ctx.state==='suspended'){ try{ this.ctx.resume(); }catch(e){} } },
+  async loadClip(name,url){
+    if(!this.ctx) return;
+    try{
+      let buf=await idbGetAudio(name);
+      if(!buf){ const r=await fetch(url,{mode:'cors'}); if(!r.ok) throw 0; buf=await r.arrayBuffer(); idbSetAudio(name,buf).catch(()=>{}); }
+      const ab=await this.ctx.decodeAudioData(buf.slice(0));
+      this.buffers[name]=ab;
+      if(name==='music' && this._wantMusic){ // 버퍼 준비되면 엘리먼트→버퍼로 전환(오프라인 캐시 이점)
+        if(this.musicEl){ try{this.musicEl.pause();}catch(e){} this.musicEl=null; }
+        if(!this.musicSrc) this.startMusic();
+      }
+    }catch(e){ /* CORS/오프라인/디코드 실패 → play 시 HTMLAudio 엘리먼트로 폴백 */ }
+  },
+  play(name){
+    this.resume();
+    if(this.ctx && this.buffers[name]){ const s=this.ctx.createBufferSource(); s.buffer=this.buffers[name]; s.connect(this.sfxGain); s.start(); if(name==='explosion') this._expSrc=s; return; }
+    if(SOUND_SRC[name]){ this.playEl(name); return; } // 진짜 음원(엘리먼트 스트리밍, CORS 불필요)
+    if(this.ctx) this.synth(name);                    // url 없으면 합성(클리어음 등)
+  },
+  playEl(name){
+    if(!this.on) return;
+    try{ const a=new Audio(SOUND_SRC[name]); a.volume=this.sfxVol; if(name==='explosion') this._expEl=a; a.play().catch(()=>{ if(this.ctx) this.synth(name); }); }
+    catch(e){ if(this.ctx) this.synth(name); }
+  },
+  stopExplosion(){ try{ this._expSrc&&this._expSrc.stop(); }catch(e){} this._expSrc=null; if(this._expEl){ try{ this._expEl.pause(); this._expEl.currentTime=0; }catch(e){} this._expEl=null; } },
+  setTrack(idx){
+    if(idx<0||idx>=MUSIC_TRACKS.length) return;
+    this.trackIdx=idx; try{localStorage.setItem('gl_track',idx);}catch(e){}
+    const wasWant=this._wantMusic;
+    this.stopMusic();                 // 현재 곡 정지(_wantMusic=false 됨)
+    if(wasWant) this.startMusic();    // 재생 중이었으면 새 곡으로 다시
+  },
+  startMusic(){
+    this._wantMusic=true; this.resume();
+    if(this.musicSrc||this.musicEl) return; // 이미 재생 중
+    const t=MUSIC_TRACKS[this.trackIdx]||MUSIC_TRACKS[0];
+    this._srcs=[encodeURI(t.file), ...MUSIC_FALLBACKS]; // 선택 곡 → 폴백 순
+    this.playMusicEl(0);
+  },
+  playMusicEl(idx){
+    const srcs=this._srcs||MUSIC_FALLBACKS;
+    if(idx>=srcs.length) return; // 다 실패 → 무음
+    let a, done=false;
+    const fail=()=>{ if(done) return; done=true; if(this.musicEl===a){ try{a.pause();}catch(e){} this.musicEl=null; } this.playMusicEl(idx+1); }; // 다음 후보로
+    const ok=()=>{ done=true; }; // 재생 가능/시작 = 성공(폴백 안 함)
+    try{ a=new Audio(srcs[idx]); }catch(e){ this.playMusicEl(idx+1); return; }
+    a.loop=true; a.preload='auto'; a.volume=this.on?this.musicVol:0;
+    a.addEventListener('error', fail);
+    a.addEventListener('canplay', ok);   // 로컬 큰 파일이라도 재생 가능해지면 성공 처리
+    a.addEventListener('playing', ok);
+    this.musicEl=a;
+    try{ a.load(); }catch(e){}
+    const p=a.play();
+    if(p&&p.then) p.then(ok).catch(fail); // 재생 거부 → 폴백
+    // 안전망: 6초 안에 '아무것도 못 불러옴(readyState 0 = 진짜 차단)'이면만 다음 후보로
+    setTimeout(()=>{ if(!done && a.readyState===0) fail(); }, 6000);
+  },
+  stopMusic(){ if(this.musicSrc){ try{this.musicSrc.stop();}catch(e){} this.musicSrc=null; } if(this.musicEl){ try{this.musicEl.pause();}catch(e){} this.musicEl=null; } this._wantMusic=false; },
+  toggle(){ this.init(); this.on=!this.on; if(this.master) this.master.gain.value=this.on?1.0:0; if(this.musicEl) this.musicEl.volume=this.on?this.musicVol:0; try{localStorage.setItem('gl_sound', this.on?'on':'off');}catch(e){} return this.on; },
+  // ── 내장 합성 폴백 ──
+  synth(name){
+    const c=this.ctx, t=c.currentTime, g=this.sfxGain;
+    const tone=(f0,f1,dur,type,vol)=>{ const o=c.createOscillator(),e=c.createGain(); o.type=type||'square'; o.frequency.setValueAtTime(f0,t); if(f1)o.frequency.exponentialRampToValueAtTime(f1,t+dur); e.gain.setValueAtTime(vol||0.3,t); e.gain.exponentialRampToValueAtTime(0.001,t+dur); o.connect(e);e.connect(g); o.start(t); o.stop(t+dur); };
+    if(name==='pickup') tone(880,1320,0.12,'square',0.22);
+    else if(name==='land') tone(520,300,0.18,'sine',0.28);
+    else if(name==='explosion'){ const n=c.createBuffer(1,Math.floor(c.sampleRate*0.4),c.sampleRate),d=n.getChannelData(0); for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2); const o=c.createBufferSource(); o.buffer=n; const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(1200,t); f.frequency.exponentialRampToValueAtTime(150,t+0.4); const e=c.createGain(); e.gain.setValueAtTime(0.5,t); e.gain.exponentialRampToValueAtTime(0.001,t+0.4); o.connect(f);f.connect(e);e.connect(g); o.start(t); o.stop(t+0.4); }
+    else if(name==='clear'){ [523,659,784,1046].forEach((f,i)=>{ const o=c.createOscillator(),e=c.createGain(); o.type='triangle'; o.frequency.value=f; const tt=t+i*0.12; e.gain.setValueAtTime(0.0001,tt); e.gain.exponentialRampToValueAtTime(0.3,tt+0.02); e.gain.exponentialRampToValueAtTime(0.001,tt+0.32); o.connect(e);e.connect(g); o.start(tt); o.stop(tt+0.34); }); }
+  },
+};
+// 첫 사용자 제스처에 오디오 깨우기(브라우저 자동재생 정책). 배경음이 막혔으면 다음 클릭에 재시도.
+window.addEventListener('pointerdown',()=>{ AudioFX.init(); AudioFX.resume(); if(AudioFX._wantMusic && !AudioFX.musicSrc && !AudioFX.musicEl) AudioFX.startMusic(); });
+
+// TUTORIAL STAGES
+// 단일 인터랙티브 튜토리얼 (목표=지구, 시간/연료 압박 없음 — 학습에 집중)
+const TUTORIALS = [
+  {
+    name:'우주 비행 배우기',
+    hint:'천천히 따라 해봐요! 🚀\n화면 아래 말풍선이 하나씩 알려줄게요.\n오늘 배울 것: 움직이기 · 멈추기 · 중력 · 착륙',
+    targets:['지구'],
+    timeLimit: 600,
+    fuelStart: 300,
+  },
+];
+
+// ── 인터랙티브 튜토리얼 단계 (동작을 감지하면 다음으로) ──
+function tutEarth(){ return G.planets.find(p=>p.data.name==='지구'); }
+function tutDistEarth(){ const e=tutEarth(); return e?Math.hypot(e.wx-G.ship.wx,e.wy-G.ship.wy):9999; }
+// 튜토리얼용 우주 쓰레기 1개 — 우주선 근처 고정 배치(주우면 실제 25P 시작 자금)
+function spawnTutorialDebris(){
+  const s=G.ship; if(!s) return;
+  const e=tutEarth();
+  // 대체로 지구 쪽 방향에 두어 줍는 동선이 착륙으로 이어지게(약간의 좌우 흔들림)
+  const toEarth=e?Math.atan2(e.wy-s.wy, e.wx-s.wx):Math.random()*Math.PI*2;
+  const a=toEarth+(Math.random()-0.5)*1.2;
+  const x0=s.wx+Math.cos(a)*150, y0=s.wy+Math.sin(a)*150;
+  G.debris=[{anchorIdx:null, x0, y0, wx:x0, wy:y0, rot:0, spin:0.004, value:25, type:'satellite', r:13}];
+}
+const TUT_STEPS = [
+  { id:'move',
+    text:'🕹 우주선을 콕 누르고, 나타난 동그라미 안에서 손가락을 끌어보세요. 끄는 방향으로 날아가요!',
+    check:()=> G.ship.speed()>0.18,
+    praise:'좋아요! 잘 날아가네요 🚀' },
+  { id:'inertia',
+    text:'✋ 이제 손을 떼보세요. 우주는 공기가 없어서 저절로 안 멈추고 계속 미끄러져요 — 이게 "관성"이에요!',
+    check:()=> !G.ship.dragActive && G.ship.speed()>0.16,
+    praise:'봤죠? 손을 떼도 계속 가요.' },
+  { id:'brake',
+    text:'🛑 멈추려면 "가던 쪽의 반대"로 밀어야 해요. 반대로 밀어서 거의 멈춰보세요(속도 0에 가깝게).',
+    check:()=> G.ship.speed()<0.08,
+    praise:'완벽해요! 이게 바로 "역추진(브레이크)"이에요.' },
+  { id:'debris',
+    text:'♻️ 저기 떠다니는 우주 쓰레기📡가 보이죠? 날아가서 주워보세요! 치우면 상점에서 쓸 돈(P)이 생겨요.',
+    onEnter:()=> spawnTutorialDebris(),
+    check:()=> !G.debris || G.debris.length===0,
+    praise:'멋져요! 우주 쓰레기를 치웠어요 🌍 모은 돈은 라운드 클리어 후 🛸 상점에서 써요.' },
+  { id:'gravity',
+    text:'🌍 이제 지구로 살살 다가가 보세요. 가까워질수록 중력이 잡아당겨서 속도가 점점 빨라져요! 위쪽 속도계👀를 지켜보세요.',
+    onEnter:()=> pulseEl('vel-indicator'),
+    check:()=> tutDistEarth() < (tutEarth()?tutEarth().data.size*3:180),
+    praise:'느꼈나요? 중력이 끌어당겨서 빨라졌어요 — 그래서 착륙이 까다로운 거예요!' },
+  { id:'land',
+    text:'🟢 지금이 착륙 찬스! "반대로 밀어" 속도를 줄이세요. 속도계가 초록🟢일 때 살짝 닿으면 착륙 성공! 너무 빠르면 쾅💥 부딪혀요.',
+    onEnter:()=>{ pulseEl('vel-indicator'); },
+    check:()=> false, // 착륙(onLanded)이 완료 처리
+    praise:'' },
+];
+
+// ═══════════════════════════════════════════════
+//  STAR GENERATION
+// ═══════════════════════════════════════════════
+for(let i=0;i<400;i++){
+  G.bgStars.push({
+    x:Math.random(),
+    y:Math.random(),
+    r:Math.random()<0.1?1.5:0.7,
+    a:Math.random()*0.6+0.2,
+    flicker:Math.random()*2+1,
+    phase:Math.random()*Math.PI*2,
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  PLANET CLASS
+// ═══════════════════════════════════════════════
+class Planet {
+  constructor(data, angle){
+    this.data = data;
+    this.angle = angle;
+    // 위성(들): 데이터에 satellites 배열이 있으면 항상 활성. 각 위성은 자기 궤도/각도를 가짐
+    this.sats = (data.satellites||[]).map(s=>({def:s, x:0, y:0, angle:Math.random()*Math.PI*2}));
+    this.update(0);
+  }
+  update(dt){
+    this.angle += (Math.PI*2/this.data.period)*dt*0.0026;
+    this.wx = Math.cos(this.angle)*this.data.orbitR;
+    this.wy = Math.sin(this.angle)*this.data.orbitR;
+    for(const sat of this.sats){
+      sat.angle += (Math.PI*2/sat.def.period)*dt*0.0026;
+      sat.x = this.wx + Math.cos(sat.angle)*sat.def.orbitR;
+      sat.y = this.wy + Math.sin(sat.angle)*sat.def.orbitR;
+    }
+  }
+  screen(){ return {x:CX+G.camX+this.wx*G.zoom, y:CY+G.camY+this.wy*G.zoom}; }
+  get r(){ return this.data.size*G.zoom; }
+  get gravityFieldR(){ return this.data.gravity*600*G.zoom; }
+  draw(){
+    const s = this.screen();
+    const r = this.r;
+    // gravity field
+    const gfr = this.gravityFieldR;
+    const gfGrd=ctx.createRadialGradient(s.x,s.y,r,s.x,s.y,gfr);
+    gfGrd.addColorStop(0,this.data.color+'00');
+    gfGrd.addColorStop(0.4,this.data.color+'18');
+    gfGrd.addColorStop(0.8,this.data.color+'0c');
+    gfGrd.addColorStop(1,this.data.color+'00');
+    ctx.beginPath();ctx.arc(s.x,s.y,gfr,0,Math.PI*2);ctx.fillStyle=gfGrd;ctx.fill();
+    ctx.beginPath();ctx.arc(s.x,s.y,gfr,0,Math.PI*2);
+    ctx.strokeStyle=this.data.color+'55';ctx.lineWidth=1.5;ctx.setLineDash([6,8]);ctx.stroke();ctx.setLineDash([]);
+    // glow
+    const grd = ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,r*3);
+    grd.addColorStop(0,this.data.color+'44');
+    grd.addColorStop(1,'transparent');
+    ctx.beginPath();ctx.arc(s.x,s.y,r*3,0,Math.PI*2);ctx.fillStyle=grd;ctx.fill();
+    // 뒷고리(본체 뒤로 사라지는 부분) — 본체보다 먼저
+    if(this.data.ring) drawSaturnRing(ctx,s.x,s.y,r,'back',W,H);
+    if(this.data.en==='Uranus') drawUranusRing(ctx,s.x,s.y,r,'back',W,H);
+    // planet body
+    const pg = ctx.createRadialGradient(s.x-r*.3,s.y-r*.3,0,s.x,s.y,r);
+    pg.addColorStop(0,'#ffffff55');
+    pg.addColorStop(0.4,this.data.color);
+    pg.addColorStop(1,this.data.color+'88');
+    // 고리 행성은 뒷고리가 비치지 않게 불투명 베이스 먼저
+    if(this.data.ring||this.data.en==='Uranus'){ctx.beginPath();ctx.arc(s.x,s.y,r,0,Math.PI*2);ctx.fillStyle=this.data.color;ctx.fill();}
+    ctx.beginPath();ctx.arc(s.x,s.y,r,0,Math.PI*2);
+    ctx.fillStyle=pg;ctx.fill();
+    // 천체별 디테일(줄무늬·극관 등) — 정의된 행성만 그림
+    drawPlanetDetail(ctx, this.data, s.x, s.y, r);
+    // 앞고리(본체 앞을 가로지르는 부분) — 본체·디테일 후에
+    if(this.data.ring) drawSaturnRing(ctx,s.x,s.y,r,'front',W,H);
+    if(this.data.en==='Uranus') drawUranusRing(ctx,s.x,s.y,r,'front',W,H);
+    // satellites (moons)
+    for(const sat of this.sats){
+      // faint orbit path (educational — shows the moon's circle)
+      ctx.beginPath();ctx.arc(s.x,s.y,sat.def.orbitR*G.zoom,0,Math.PI*2);
+      ctx.strokeStyle='rgba(255,255,255,.10)';ctx.lineWidth=1;ctx.stroke();
+      const sx=CX+G.camX+sat.x*G.zoom, sy=CY+G.camY+sat.y*G.zoom;
+      const sr=Math.max(2,sat.def.size*G.zoom);
+      const col=sat.def.color||'#c0c0c0';
+      const mg=ctx.createRadialGradient(sx-sr*.3,sy-sr*.3,0,sx,sy,sr);
+      mg.addColorStop(0,'#ffffff88');mg.addColorStop(0.5,col);mg.addColorStop(1,col+'80');
+      ctx.beginPath();ctx.arc(sx,sy,sr,0,Math.PI*2);ctx.fillStyle=mg;ctx.fill();
+      // moon label when zoomed in enough
+      if(G.zoom>0.6){
+        ctx.font=`${Math.max(7,8*G.zoom)}px 'Orbitron',monospace`;
+        ctx.fillStyle='rgba(255,255,255,.45)';ctx.textAlign='center';
+        ctx.fillText(sat.def.name,sx,sy+sr+10*G.zoom);
+      }
+    }
+    // label
+    ctx.font=`${Math.max(9,11*G.zoom)}px 'Orbitron',monospace`;
+    ctx.fillStyle='rgba(255,255,255,.55)';
+    ctx.textAlign='center';
+    ctx.fillText(this.data.name,s.x,s.y+r+14*G.zoom);
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  PLANET SURFACE DETAIL (천체별 무늬) — 행성 본체 위에 클립해서 그림
+// ═══════════════════════════════════════════════
+function drawPlanetDetail(gc, data, cx, cy, r){
+  switch(data.en){
+    case 'Mercury': drawMercuryDetail(gc,cx,cy,r); break;
+    case 'Venus':   drawVenusDetail(gc,cx,cy,r); break;
+    case 'Earth':   drawEarthDetail(gc,cx,cy,r); break;
+    case 'Mars':    drawMarsDetail(gc,cx,cy,r); break;
+    case 'Jupiter': drawJupiterDetail(gc,cx,cy,r); break;
+    case 'Saturn':  drawSaturnDetail(gc,cx,cy,r); break;
+    case 'Uranus':  drawUranusDetail(gc,cx,cy,r); break;
+    case 'Neptune': drawNeptuneDetail(gc,cx,cy,r); break;
+    default: return; // 정의 안 된 천체는 기존 단색 구체 그대로
+  }
+}
+// 본체+디테일을 임의 컨텍스트에 그림(게임 캔버스 ctx 또는 허브 썸네일 캔버스). cw/ch=고리 앞뒤가림 클립용 캔버스 크기.
+function drawPlanetGlobe(gc, data, cx, cy, r, cw, ch){
+  const ring=!!data.ring, uranus=data.en==='Uranus';
+  // 뒷고리(본체 뒤로) → 불투명 베이스 → 본체 → 디테일 → 앞고리
+  if(ring) drawSaturnRing(gc,cx,cy,r,'back',cw,ch);
+  if(uranus) drawUranusRing(gc,cx,cy,r,'back',cw,ch);
+  if(ring||uranus){gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.fillStyle=data.color;gc.fill();}
+  const pg=gc.createRadialGradient(cx-r*.3,cy-r*.3,0,cx,cy,r);
+  pg.addColorStop(0,'#ffffff55');pg.addColorStop(0.4,data.color);pg.addColorStop(1,data.color+'88');
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.fillStyle=pg;gc.fill();
+  drawPlanetDetail(gc,data,cx,cy,r);
+  if(ring) drawSaturnRing(gc,cx,cy,r,'front',cw,ch);
+  if(uranus) drawUranusRing(gc,cx,cy,r,'front',cw,ch);
+}
+// 구면 음영(좌상단 빛 → 우하단 그림자) — 디테일 행성 공통 마무리
+function sphereShade(gc,cx,cy,r){
+  const sh=gc.createRadialGradient(cx-r*0.32,cy-r*0.32,r*0.1,cx,cy,r);
+  sh.addColorStop(0,'rgba(255,255,255,0.10)');
+  sh.addColorStop(0.55,'rgba(255,255,255,0)');
+  sh.addColorStop(1,'rgba(0,0,0,0.40)');
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.fillStyle=sh;gc.fill();
+}
+// 화성 극관 한 개: 구름결 + 나선 회오리(극관 나선 홈) — 이미 원판으로 클립된 상태에서 호출
+function drawPolarCap(gc,ccx,ccy,cr,swirlDir){
+  gc.save();
+  gc.beginPath();gc.arc(ccx,ccy,cr,0,Math.PI*2);gc.clip();
+  const g=gc.createRadialGradient(ccx-cr*0.2,ccy-cr*0.2,0,ccx,ccy,cr);
+  g.addColorStop(0,'rgba(248,248,245,0.97)');
+  g.addColorStop(0.7,'rgba(234,237,242,0.9)');
+  g.addColorStop(1,'rgba(218,225,234,0.68)');
+  gc.beginPath();gc.arc(ccx,ccy,cr,0,Math.PI*2);gc.fillStyle=g;gc.fill();
+  gc.fillStyle='rgba(255,255,255,0.45)';
+  gc.beginPath();gc.ellipse(ccx-cr*0.22,ccy-cr*0.18,cr*0.5,cr*0.3,0.5,0,Math.PI*2);gc.fill();
+  gc.strokeStyle='rgba(168,174,186,0.5)';
+  gc.lineWidth=Math.max(0.6,cr*0.07);
+  gc.lineCap='round';
+  for(let k=0;k<3;k++){
+    const a0=k*2.1;
+    gc.beginPath();
+    for(let j=0;j<=20;j++){
+      const tt=j/20, ang=a0+swirlDir*tt*3.4, rad=cr*(0.12+tt*0.82);
+      const x=ccx+Math.cos(ang)*rad, y=ccy+Math.sin(ang)*rad;
+      j?gc.lineTo(x,y):gc.moveTo(x,y);
+    }
+    gc.stroke();
+  }
+  gc.restore();
+}
+function drawMarsDetail(gc,cx,cy,r){
+  gc.save();
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.clip();
+  gc.fillStyle='rgba(138,46,6,0.42)';
+  gc.beginPath();gc.ellipse(cx-r*0.27,cy+r*0.13,r*0.33,r*0.20,0,0,Math.PI*2);gc.fill();
+  gc.fillStyle='rgba(154,54,8,0.38)';
+  gc.beginPath();gc.ellipse(cx+r*0.35,cy-r*0.13,r*0.17,r*0.11,0,0,Math.PI*2);gc.fill();
+  gc.fillStyle='rgba(217,106,42,0.30)';
+  gc.beginPath();gc.ellipse(cx+r*0.11,cy+r*0.44,r*0.20,r*0.11,0,0,Math.PI*2);gc.fill();
+  drawPolarCap(gc,cx,cy-r*1.03,r*0.30,1);    // 북극관
+  drawPolarCap(gc,cx,cy+r*1.10,r*0.26,-1);   // 남극관
+  gc.restore();
+  sphereShade(gc,cx,cy,r);
+}
+function drawMercuryDetail(gc,cx,cy,r){
+  gc.save();
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.clip();
+  const crater=(dx,dy,cr)=>{
+    const x=cx+dx*r,y=cy+dy*r,rr=cr*r;
+    gc.beginPath();gc.arc(x,y,rr,0,Math.PI*2);
+    gc.fillStyle='rgba(120,120,120,0.5)';gc.fill();
+    gc.lineWidth=Math.max(0.5,rr*0.22);gc.strokeStyle='rgba(215,215,215,0.45)';gc.stroke();
+  };
+  crater(-0.30,-0.25,0.18);crater(0.26,0.20,0.13);crater(0.05,-0.38,0.08);
+  crater(-0.16,0.30,0.10);crater(0.40,-0.12,0.07);crater(-0.40,0.05,0.06);
+  gc.restore();
+  sphereShade(gc,cx,cy,r);
+}
+function drawVenusDetail(gc,cx,cy,r){
+  gc.save();
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.clip();
+  gc.lineCap='round';
+  const band=(y0,y1,c,w)=>{gc.strokeStyle=c;gc.lineWidth=r*w;gc.beginPath();gc.moveTo(cx-r*0.9,cy+r*y0);gc.quadraticCurveTo(cx,cy+r*y1,cx+r*0.9,cy+r*y0*0.85);gc.stroke();};
+  band(-0.32,-0.46,'rgba(243,214,143,0.6)',0.14);
+  band(0.05,0.20,'rgba(196,150,71,0.55)',0.17);
+  band(0.40,0.52,'rgba(243,214,143,0.5)',0.12);
+  band(-0.62,-0.70,'rgba(208,168,90,0.45)',0.10);
+  gc.restore();
+  sphereShade(gc,cx,cy,r);
+}
+function drawEarthDetail(gc,cx,cy,r){
+  gc.save();
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.clip();
+  gc.translate(cx,cy);gc.scale(r/130,r/130);gc.translate(-185,-195); // 시안(중심185,195·반지름130) 좌표 재사용
+  gc.fillStyle='#4f8a3f';
+  gc.fill(new Path2D("M180 150 Q150 158 150 188 Q150 205 168 214 Q172 246 196 286 Q210 250 208 218 Q230 205 224 178 Q224 150 198 142 Q188 144 180 150 Z")); // 아프리카
+  gc.fillStyle='#c2a866';gc.beginPath();gc.ellipse(186,166,30,16,0,0,Math.PI*2);gc.fill(); // 사하라
+  gc.fillStyle='#6a9a52';gc.fill(new Path2D("M172 134 Q166 118 188 114 Q208 116 212 130 Q200 138 188 136 Q178 140 172 134 Z")); // 유럽
+  gc.fillStyle='#c2a866';gc.fill(new Path2D("M218 148 Q236 150 240 166 Q230 174 220 166 Q214 156 218 148 Z")); // 아라비아
+  gc.fillStyle='#6a9a52';gc.fill(new Path2D("M222 116 Q262 112 288 130 Q302 148 282 156 Q255 148 238 138 Q226 130 222 116 Z")); // 아시아
+  gc.fillStyle='#5e8f48';gc.fill(new Path2D("M256 150 Q272 156 266 176 Q258 168 256 150 Z")); // 인도
+  gc.fillStyle='#4f8a3f';gc.fill(new Path2D("M120 168 Q96 176 100 210 Q108 242 122 224 Q118 196 130 182 Q126 170 120 168 Z")); // 남아메리카
+  gc.fillStyle='#588641';gc.beginPath();gc.ellipse(216,250,6,13,0,0,Math.PI*2);gc.fill(); // 마다가스카르
+  gc.fillStyle='rgba(207,230,234,0.85)';gc.beginPath();gc.ellipse(150,112,14,10,0,0,Math.PI*2);gc.fill(); // 그린란드
+  gc.fillStyle='rgba(234,242,246,0.9)';gc.beginPath();gc.arc(185,62,40,0,Math.PI*2);gc.fill();   // 북극빙관
+  gc.fillStyle='rgba(238,244,247,0.92)';gc.beginPath();gc.arc(185,332,52,0,Math.PI*2);gc.fill(); // 남극빙관
+  gc.fillStyle='rgba(244,248,255,0.5)';gc.fill(new Path2D("M120 150 Q140 142 150 158 Q140 172 124 166 Q114 158 120 150 Z")); // 구름
+  gc.strokeStyle='rgba(244,248,255,0.5)';gc.lineWidth=4;gc.lineCap='round';
+  gc.beginPath();gc.moveTo(205,205);gc.quadraticCurveTo(230,200,246,214);gc.stroke();
+  gc.fillStyle='rgba(244,248,255,0.45)';gc.beginPath();gc.ellipse(150,232,16,6,0,0,Math.PI*2);gc.fill();
+  gc.fillStyle='rgba(244,248,255,0.5)';gc.beginPath();gc.ellipse(245,180,10,5,0,0,Math.PI*2);gc.fill();
+  gc.restore();
+  sphereShade(gc,cx,cy,r);
+}
+function drawJupiterDetail(gc,cx,cy,r){
+  gc.save();
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.clip();
+  gc.translate(cx,cy);gc.scale(r/70,r/70);gc.translate(-548,-155);
+  gc.lineCap='round';
+  const band=(d,c,w,o)=>{gc.strokeStyle=c;gc.lineWidth=w;gc.globalAlpha=o;gc.stroke(new Path2D(d));gc.globalAlpha=1;};
+  band("M478 124 Q548 118 618 124",'#b89770',9,0.6);
+  band("M478 140 Q548 132 618 140",'#e6cda3',9,0.6);
+  band("M478 156 Q548 148 618 156",'#9c7b50',11,0.6);
+  band("M478 174 Q548 184 618 174",'#decba0',9,0.55);
+  band("M478 192 Q548 200 618 192",'#a98a5d',12,0.6);
+  const grs=(rx,ry,c)=>{gc.beginPath();gc.ellipse(578,180,rx,ry,0,0,Math.PI*2);gc.fillStyle=c;gc.fill();};
+  grs(17,11,'#d7b48f');grs(13,8.2,'#c25a38');grs(8,5,'#a23f24');grs(3.6,2.2,'#7e2c18'); // 대적점(4겹)
+  gc.strokeStyle='#f0d0bc';gc.lineWidth=1.4;gc.globalAlpha=0.75;
+  gc.stroke(new Path2D("M571 176 Q578 172 585 177 Q580 184 572 181"));gc.globalAlpha=1; // 소용돌이
+  gc.restore();
+  sphereShade(gc,cx,cy,r);
+}
+function drawSaturnDetail(gc,cx,cy,r){
+  gc.save();
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.clip();
+  gc.lineCap='round';
+  const band=(y,c,w)=>{gc.strokeStyle=c;gc.lineWidth=r*w;gc.beginPath();gc.moveTo(cx-r*0.9,cy+r*y);gc.quadraticCurveTo(cx,cy+r*(y+0.1),cx+r*0.9,cy+r*y);gc.stroke();};
+  band(-0.30,'rgba(189,165,100,0.5)',0.12);
+  band(0.02,'rgba(231,210,154,0.5)',0.12);
+  band(0.32,'rgba(189,165,100,0.45)',0.11);
+  gc.restore();
+  sphereShade(gc,cx,cy,r);
+}
+function drawUranusDetail(gc,cx,cy,r){
+  // A안: 거의 무늬 없는 창백한 청록 디스크(고리는 drawPlanetGlobe/Planet.draw에서 앞뒤로 그림)
+  sphereShade(gc,cx,cy,r);
+}
+// 토성 고리(C안): 앞/뒤 가림 — back은 본체 전에, front는 본체 후에 호출. cw/ch=클립용 캔버스 크기
+function drawSaturnRing(gc,cx,cy,r,part,cw,ch){
+  gc.save();
+  gc.beginPath();
+  if(part==='back') gc.rect(0,0,cw,cy); else gc.rect(0,cy,cw,ch-cy);
+  gc.clip();
+  gc.translate(cx,cy);
+  gc.rotate(-0.35); // 약 -20°
+  const ring=(rx,c,lw,op)=>{gc.beginPath();gc.ellipse(0,0,rx,rx*0.42,0,0,Math.PI*2);gc.strokeStyle=c;gc.lineWidth=lw;gc.globalAlpha=op==null?1:op;gc.stroke();gc.globalAlpha=1;};
+  ring(1.95*r,'#9fa8b4',0.11*r,0.85);
+  ring(1.78*r,'#c3ccd6',0.19*r,1);
+  ring(1.78*r,'#e6ecf2',0.055*r,0.6);  // 광택
+  ring(1.60*r,'#141820',0.10*r,1);     // 카시니 간극(검은 줄)
+  ring(1.42*r,'#aeb6c2',0.21*r,1);
+  ring(1.25*r,'#c8d0da',0.085*r,0.7);
+  if(part==='front'){
+    gc.beginPath();gc.ellipse(r*0.5,r*0.55,r*0.42,r*0.16,0,0,Math.PI*2);
+    gc.fillStyle='rgba(0,0,0,0.22)';gc.fill();
+  }
+  gc.restore();
+}
+// 천왕성 고리(A안): 자전축이 누워 거의 세로 → 좌/우로 앞뒤 가림
+function drawUranusRing(gc,cx,cy,r,part,cw,ch){
+  gc.save();
+  gc.beginPath();
+  if(part==='back') gc.rect(0,0,cx,ch); else gc.rect(cx,0,cw-cx,ch);
+  gc.clip();
+  gc.translate(cx,cy);
+  gc.rotate(-0.21); // 약 -12°
+  const ringV=(a,b,c,lw,op)=>{gc.beginPath();gc.ellipse(0,0,a*r,b*r,0,0,Math.PI*2);gc.strokeStyle=c;gc.lineWidth=lw;gc.globalAlpha=op;gc.stroke();gc.globalAlpha=1;};
+  ringV(0.52,1.45,'#96c3c8',Math.max(0.6,r*0.018),0.5);
+  ringV(0.46,1.30,'#cdebee',Math.max(0.8,r*0.030),0.7); // 엡실론(가장 밝음)
+  ringV(0.40,1.16,'#96c3c8',Math.max(0.5,r*0.014),0.4);
+  gc.restore();
+}
+function drawNeptuneDetail(gc,cx,cy,r){
+  gc.save();
+  gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.clip();
+  // 위도 줄무늬(세로 linear gradient → 경계선 없는 부드러운 띠)
+  const bg=gc.createLinearGradient(cx,cy-r,cx,cy+r);
+  bg.addColorStop(0.00,'rgba(255,255,255,0.05)');
+  bg.addColorStop(0.14,'rgba(22,39,111,0.20)');
+  bg.addColorStop(0.28,'rgba(255,255,255,0.05)');
+  bg.addColorStop(0.44,'rgba(22,39,111,0.16)');
+  bg.addColorStop(0.60,'rgba(255,255,255,0.06)');
+  bg.addColorStop(0.76,'rgba(22,39,111,0.20)');
+  bg.addColorStop(0.92,'rgba(255,255,255,0.04)');
+  gc.fillStyle=bg;gc.beginPath();gc.arc(cx,cy,r,0,Math.PI*2);gc.fill();
+  // 옅은 대흑점(가장자리 투명)
+  const dx=cx+r*0.19, dy=cy-r*0.20, dr=r*0.30;
+  gc.save();gc.translate(dx,dy);gc.scale(1,0.64);gc.translate(-dx,-dy);
+  const dg=gc.createRadialGradient(dx,dy,0,dx,dy,dr);
+  dg.addColorStop(0,'rgba(7,15,58,0.55)');
+  dg.addColorStop(0.55,'rgba(16,30,98,0.30)');
+  dg.addColorStop(1,'rgba(16,30,98,0)');
+  gc.fillStyle=dg;gc.beginPath();gc.arc(dx,dy,dr,0,Math.PI*2);gc.fill();
+  gc.restore();
+  // 섬세한 권운 줄기(밝게, 가장자리 투명)
+  const cirrus=(ox,oy,w,h,op)=>{
+    const gx=cx+ox*r, gy=cy+oy*r, gr=w*r;
+    gc.save();gc.translate(gx,gy);gc.scale(1,h);gc.translate(-gx,-gy);
+    const wg=gc.createRadialGradient(gx,gy,0,gx,gy,gr);
+    wg.addColorStop(0,'rgba(243,248,255,'+op+')');
+    wg.addColorStop(0.5,'rgba(220,233,255,'+(op*0.45).toFixed(3)+')');
+    wg.addColorStop(1,'rgba(220,233,255,0)');
+    gc.fillStyle=wg;gc.beginPath();gc.arc(gx,gy,gr,0,Math.PI*2);gc.fill();
+    gc.restore();
+  };
+  cirrus(-0.19,0.00,0.50,0.15,0.5);
+  cirrus(0.14,0.30,0.35,0.18,0.45);
+  cirrus(-0.07,-0.40,0.30,0.21,0.5);
+  gc.restore();
+  sphereShade(gc,cx,cy,r);
+}
+
+// ═══════════════════════════════════════════════
+//  SHIP CLASS
+// ═══════════════════════════════════════════════
+function adjustColor(hex,amt){
+  const n=parseInt(hex.replace('#',''),16);
+  const r=Math.max(0,Math.min(255,(n>>16)+Math.round(amt*255)));
+  const g=Math.max(0,Math.min(255,((n>>8)&0xff)+Math.round(amt*255)));
+  const b=Math.max(0,Math.min(255,(n&0xff)+Math.round(amt*255)));
+  return `rgb(${r},${g},${b})`;
+}
+
+class Ship {
+  constructor(wx,wy){
+    this.wx=wx; this.wy=wy;
+    this.vx=0; this.vy=0;
+    this.angle=0;
+    this.thrust=0;
+    this.thrustAngle=0;
+    this.selected=false;
+    this.landed=false;
+    this.landedPlanet=null;
+    this.exploding=false;
+    this.size=14;
+    // drag control
+    this.dragActive=false;
+    this.dragSX=0; this.dragSY=0;
+    this.dragEX=0; this.dragEY=0;
+    this.controlR=70;
+    // landing gear
+    this.gearExtend=0; // 0=retracted 1=extended
+    this.engineFlame=0;
+    // launch grace: 발사 직후 곁에 있던 행성들은 벗어날 때까지 충돌 무시(이웃행성 즉사 방지)
+    this.ignorePlanets=[];
+    this.noCollideTimer=0; // frames — skip all planet collisions while >0
+  }
+  screen(){ return {x:CX+G.camX+this.wx*G.zoom, y:CY+G.camY+this.wy*G.zoom}; }
+  get r(){ return this.size*Math.min(G.zoom,1.4); }
+
+  applyThrust(dx,dy){
+    // dx,dy normalized -1..1 relative to controlR
+    const force=0.08;
+    this.vx+=dx*force;
+    this.vy+=dy*force;
+    G.fuel=Math.max(0,G.fuel-Math.sqrt(dx*dx+dy*dy)*0.12);
+    this.engineFlame=1;
+    // 기수 = 드래그 방향 (가고 싶은 방향)
+    if(dx!==0||dy!==0) this.angle=Math.atan2(dy,dx)+Math.PI/2;
+  }
+
+  // Per-frame continuous thrust (called every loop while drag held)
+  applyThrustContinuous(fx,fy,dt){
+    const mag=Math.sqrt(fx*fx+fy*fy);
+    const force=0.0042*mag*dt;
+    this.vx+=fx*force;
+    this.vy+=fy*force;
+    this.engineFlame=1;
+    // 기수 = 드래그 방향 (가고 싶은 방향)
+    if(fx!==0||fy!==0) this.angle=Math.atan2(fy,fx)+Math.PI/2;
+  }
+
+  update(dt){
+    if(this.landed){
+      // 착륙 중: 행성 표면에 고정되어 행성과 함께 공전 이동 (둥둥 뜨지 않게)
+      if(this.landedPlanet){
+        this.wx=this.landedPlanet.wx+Math.cos(this.landAngle)*this.landR;
+        this.wy=this.landedPlanet.wy+Math.sin(this.landAngle)*this.landR;
+        this.vx=0; this.vy=0;
+      }
+      return;
+    }
+    if(this.exploding) return;
+    // gravity from each planet (게임 플레이 가능 수준으로 감소)
+    for(const pl of G.planets){
+      const ddx=pl.wx-this.wx, ddy=pl.wy-this.wy;
+      const dist=Math.sqrt(ddx*ddx+ddy*ddy);
+      if(dist<2) continue;
+      const f=pl.data.gravity*80/(dist*dist+40)*dt;
+      this.vx+=ddx/dist*f;
+      this.vy+=ddy/dist*f;
+      // satellite gravity (위성마다 우주선을 끌어당김 — 적당한 방해 요소)
+      for(const sat of pl.sats){
+        const sdx=sat.x-this.wx, sdy=sat.y-this.wy;
+        const sd=Math.sqrt(sdx*sdx+sdy*sdy);
+        if(sd>2){
+          // 위성 중력: 두 손잡이로 조절.
+          // (1) 필드 세기 *420 — 상한에 걸리는 '강한 끌림' 구간을 넓게(달 기준 반경 ~68) → 곁을 지날 때
+          //     여러 프레임 누적되어 경로가 눈에 띄게 휨(방해 체감).
+          // (2) 상한 0.004 — 어디서든 최대 추력(0.0042)보다 약함 → 풀파워 역추진이면 언제나 탈출(갇힘 방지).
+          // (3) calm-zone — 모행성 표면 가까이(착륙 접근)선 위성 교란 ×0.3 → 정밀착륙 방해 안 함.
+          const calm = dist < pl.data.size*2.0 ? 0.3 : 1;
+          const sf=Math.min(sat.def.gravity*420/(sd*sd+60)*dt, 0.004*dt)*calm;
+          this.vx+=sdx/sd*sf;
+          this.vy+=sdy/sd*sf;
+        }
+      }
+    }
+    // no artificial drag — real inertia, keep moving unless thrust counters it
+    // move
+    this.wx+=this.vx*dt*1.4;
+    this.wy+=this.vy*dt*1.4;
+    // 각도는 applyThrust에서만 갱신 — velocity 방향으로 돌리지 않음
+    // engine flame decay
+    this.engineFlame=Math.max(0,this.engineFlame-dt*0.04);
+    // gear extends only when slow AND near a planet
+    const speed=this.speed();
+    let nearPlanet=false;
+    for(const pl of G.planets){
+      const ddx=pl.wx-this.wx, ddy=pl.wy-this.wy;
+      const dist=Math.sqrt(ddx*ddx+ddy*ddy);
+      if(dist<pl.data.size*3){nearPlanet=true;break;}
+    }
+    if(speed<0.5&&nearPlanet) this.gearExtend=Math.min(1,this.gearExtend+dt*0.08);
+    else this.gearExtend=Math.max(0,this.gearExtend-dt*0.08);
+    // collision check (world units)
+    for(const pl of G.planets){
+      const ddx=pl.wx-this.wx, ddy=pl.wy-this.wy;
+      const dist=Math.sqrt(ddx*ddx+ddy*ddy);
+      const minDist=pl.data.size+3;
+      // 발사 직후 무적시간 동안: 곁에 있는 행성은 "벗어날 때까지 무시" 목록에 등록
+      if(this.noCollideTimer>0){
+        if(dist<minDist*1.8 && this.ignorePlanets.indexOf(pl)<0) this.ignorePlanets.push(pl);
+        continue;
+      }
+      // 무적 중 곁에 있던 행성: 충분히 멀어지면 해제. 아직 곁이면 즉사(폭발)만 막고,
+      // 천천히 내려앉으면 착륙은 허용(이륙 직후 이웃행성 즉사 방지, 단 그 행성 착륙은 가능)
+      const ig=this.ignorePlanets.indexOf(pl);
+      if(ig>=0){
+        if(dist>minDist*1.8){ this.ignorePlanets.splice(ig,1); }
+        else { if(dist<minDist && speed<pl.data.landSpeed){ this.land(pl); return; } continue; }
+      }
+      if(dist<minDist){
+        if(speed<pl.data.landSpeed){ this.land(pl); }
+        else if(G.mode==='tutorial'){ tutorialSoftBounce(pl); }
+        else { this.explode(pl); }
+        return;
+      }
+      // 위성은 중력으로만 방해 — 충돌 즉사 없음(통과)
+    }
+    if(this.noCollideTimer>0) this.noCollideTimer--;
+    // fuel items
+    for(let i=G.fuelItems.length-1;i>=0;i--){
+      const fi=G.fuelItems[i];
+      const ddx=fi.wx-this.wx, ddy=fi.wy-this.wy;
+      if(Math.sqrt(ddx*ddx+ddy*ddy)<fi.r+8){
+        const amt=fi.amt||20;
+        AudioFX.play('pickup');
+        G.fuel=Math.min(G.maxFuel,G.fuel+amt);
+        G.fuelItems.splice(i,1);
+        showToast(`연료 +${amt} 충전!`,'info');
+      }
+    }
+    // space debris pickup (치우면 돈) — 줍기 쉽게 판정 반경 넉넉히
+    if(G.debris) for(let i=G.debris.length-1;i>=0;i--){
+      const d=G.debris[i];
+      if(Math.hypot(d.wx-this.wx,d.wy-this.wy)<d.r+26){
+        collectDebris(d); G.debris.splice(i,1);
+      }
+    }
+  }
+
+  speed(){ return Math.sqrt(this.vx*this.vx+this.vy*this.vy); }
+
+  land(planet){
+    // 착륙 = 이분법: 한계속도 아래로 내려앉으면 성공(여기 도달=성공), 넘으면 explode().
+    // 별점은 착륙이 아니라 스테이지 추진효율로 매김(land에서 안 함).
+    AudioFX.play('land');
+    this.landed=true;
+    this.landedPlanet=planet;
+    this.vx=0; this.vy=0;
+    this.gearExtend=1;
+    this.engineFlame=0;
+    G.zoom=MAX_ZOOM; // force maximum close-up view for the landing moment
+    // stick to planet surface (world units)
+    const ang=Math.atan2(this.wy-planet.wy,this.wx-planet.wx);
+    const sr=planet.data.size+4; // world units
+    this.wx=planet.wx+Math.cos(ang)*sr;
+    this.wy=planet.wy+Math.sin(ang)*sr;
+    this.angle=ang+Math.PI/2;
+    // 착륙 표면 위치(각도/반경) 저장 → 행성이 공전해도 표면에 붙어 따라감
+    this.landAngle=ang;
+    this.landR=sr;
+    // dust particles
+    for(let i=0;i<18;i++){
+      spawnParticle(this.wx,this.wy,planet.data.color,'dust');
+    }
+    // check mission
+    onLanded(planet);
+  }
+
+  explode(planet){
+    if(this.exploding) return;           // 이미 폭발 중이면 중복 금지(효과음 중복 방지)
+    if(tryUseShield(planet)) return;
+    this.exploding=true;
+    for(let i=0;i<60;i++) spawnParticle(this.wx,this.wy,'#ff6600','explosion');
+    for(let i=0;i<30;i++) spawnParticle(this.wx,this.wy,'#ffcc00','explosion');
+    AudioFX.play('explosion');
+    showToast('💥 폭발!','danger');
+    setTimeout(()=>onGameOver(false),1800);
+  }
+
+  draw(){
+    const s=this.screen();
+    const r=this.r;
+    if(this.exploding) return;
+    ctx.save();
+    ctx.translate(s.x,s.y);
+    ctx.rotate(this.angle);
+    const bw=r*.34, bh=r*.90; // side booster dimensions
+    // engine flame (orange/yellow glow)
+    if(this.engineFlame>0.05){
+      const fl=this.engineFlame;
+      const fg=ctx.createRadialGradient(0,r*.63,0,0,r*.63,r*1.4*fl);
+      fg.addColorStop(0,'#fffbe6');
+      fg.addColorStop(0.2,'#ff9922');
+      fg.addColorStop(0.6,'#ff4400');
+      fg.addColorStop(1,'transparent');
+      ctx.beginPath();
+      ctx.ellipse(0,r*.63,r*.25*fl,r*1.2*fl,0,0,Math.PI*2);
+      ctx.fillStyle=fg;ctx.fill();
+      // booster flames
+      for(let side=-1;side<=1;side+=2){
+        const fx=side*r*.43, fy=-r*.25+bh+r*.04;
+        const bf=ctx.createRadialGradient(fx,fy,0,fx,fy,r*.3*fl);
+        bf.addColorStop(0,'#fffbe6');
+        bf.addColorStop(0.3,'#ff9922');
+        bf.addColorStop(0.7,'#ff4400');
+        bf.addColorStop(1,'transparent');
+        ctx.beginPath();
+        ctx.ellipse(fx,fy,r*.15*fl,r*.4*fl,0,0,Math.PI*2);
+        ctx.fillStyle=bf;ctx.fill();
+      }
+    }
+    // landing gear
+    if(this.gearExtend>0.01){
+      const g=this.gearExtend;
+      ctx.strokeStyle=`rgba(180,200,220,${g*.8})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(-r*.3,r*.35);
+      ctx.lineTo(-r*.5,r*.5*g+r*.35);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(r*.3,r*.35);
+      ctx.lineTo(r*.5,r*.5*g+r*.35);ctx.stroke();
+      ctx.fillStyle=`rgba(180,200,220,${g*.7})`;
+      ctx.beginPath();ctx.ellipse(-r*.5,r*.5*g+r*.35,r*.08,r*.035,0,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.ellipse(r*.5,r*.5*g+r*.35,r*.08,r*.035,0,0,Math.PI*2);ctx.fill();
+    }
+    // cylindrical side boosters (white)
+    for(let side=-1;side<=1;side+=2){
+      ctx.beginPath();
+      ctx.roundRect(side*r*.43-bw/2,-r*.25,bw,bh,bw/2);
+      const bg=ctx.createLinearGradient(side*r*.43-bw/2,0,side*r*.43+bw/2,0);
+      bg.addColorStop(0,'#c0c0c0');bg.addColorStop(0.5,'#f5f5f5');bg.addColorStop(1,'#c0c0c0');
+      ctx.fillStyle=bg;ctx.fill();
+      ctx.strokeStyle='rgba(79,195,247,.15)';ctx.lineWidth=0.5;ctx.stroke();
+      // booster stripe
+      ctx.fillStyle='rgba(180,180,180,.5)';
+      ctx.fillRect(side*r*.43-bw/2,-r*.25+bh*.3,bw,bh*.08);
+      ctx.fillRect(side*r*.43-bw/2,-r*.25+bh*.6,bw,bh*.08);
+      // booster nozzle
+      ctx.beginPath();
+      ctx.arc(side*r*.43,-r*.25+bh+r*.04,r*.08,0,Math.PI*2);
+      ctx.fillStyle='#0a1a2a';ctx.fill();
+    }
+    // 연료통 업그레이드 시각화: 보조로켓 6구간(좌3·우3)을 레벨에 따라 앞→뒤로 색칠.
+    // Lv1~4: 한 구간씩 / Lv5: 마지막 뒤쪽 2구간 동시 → 총 6구간.
+    {
+      const ftLv=G.upgrades.fuelTank||0;
+      if(ftLv>0){
+        const lit=ftLv>=5?6:ftLv;
+        // 구간 순서: 앞(좌·우) → 중(좌·우) → 뒤(좌·우)
+        const segs=[
+          {side:-1,row:0},{side:1,row:0},
+          {side:-1,row:1},{side:1,row:1},
+          {side:-1,row:2},{side:1,row:2},
+        ];
+        const rowY=[-r*.25, -r*.25+bh*.38, -r*.25+bh*.68];
+        const rowH=[bh*.30, bh*.22, bh*.32];
+        const segColor=ftLv>=5?'#ffd24a':'#4fc3f7'; // 만렙은 골드, 그 외 시안
+        for(let k=0;k<lit;k++){
+          const sg=segs[k];
+          const bx=sg.side*r*.43-bw/2;
+          ctx.save();
+          ctx.beginPath();ctx.roundRect(bx,-r*.25,bw,bh,bw/2);ctx.clip(); // 보조로켓 모양으로 클립
+          ctx.beginPath();ctx.rect(bx,rowY[sg.row],bw,rowH[sg.row]);
+          ctx.fillStyle=segColor+'dd';ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+    // engine section (brighter blue)
+    ctx.beginPath();
+    ctx.moveTo(-r*.28,r*.28);
+    ctx.lineTo(-r*.35,r*.58);
+    ctx.lineTo(r*.35,r*.58);
+    ctx.lineTo(r*.28,r*.28);
+    ctx.closePath();
+    ctx.fillStyle='#6a7a8a';ctx.fill();
+    ctx.strokeStyle='#000';ctx.lineWidth=0.6;ctx.stroke();
+    // engine nozzles (3)
+    for(let i=-1;i<=1;i+=1){
+      const nx=i*r*.15;
+      ctx.beginPath();
+      ctx.arc(nx,r*.58+r*.05,r*.08,0,Math.PI*2);
+      ctx.fillStyle='#0a1a2a';ctx.fill();
+      ctx.strokeStyle='#000';ctx.lineWidth=0.5;ctx.stroke();
+    }
+    // main body (white)
+    ctx.beginPath();
+    ctx.moveTo(-r*.28,-r*.44);
+    ctx.lineTo(-r*.28,r*.28);
+    ctx.lineTo(r*.28,r*.28);
+    ctx.lineTo(r*.28,-r*.44);
+    ctx.closePath();
+    const bodyGrad=ctx.createLinearGradient(-r*.28,0,r*.28,0);
+    if(G.upgrades.shipColor){
+      const sc=G.upgrades.shipColor;
+      bodyGrad.addColorStop(0,adjustColor(sc,-0.2));
+      bodyGrad.addColorStop(0.5,sc);
+      bodyGrad.addColorStop(1,adjustColor(sc,-0.2));
+    } else {
+      bodyGrad.addColorStop(0,'#e0e0e0');
+      bodyGrad.addColorStop(0.5,'#ffffff');
+      bodyGrad.addColorStop(1,'#e0e0e0');
+    }
+    ctx.fillStyle=bodyGrad;ctx.fill();
+    ctx.strokeStyle='#000';ctx.lineWidth=0.8;ctx.stroke();
+    // body panel stripes
+    ctx.strokeStyle='rgba(79,195,247,.15)';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(-r*.24,r*.1);ctx.lineTo(r*.24,r*.1);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-r*.24,-r*.12);ctx.lineTo(r*.24,-r*.12);ctx.stroke();
+    // cockpit window
+    const winGrad=ctx.createRadialGradient(-r*.04,-r*.28,0,0,-r*.2,r*.15);
+    winGrad.addColorStop(0,'#bfe8ff');
+    winGrad.addColorStop(0.5,'#3a7aa8');
+    winGrad.addColorStop(1,'#142838');
+    ctx.beginPath();ctx.ellipse(0,-r*.2,r*.13,r*.16,0,0,Math.PI*2);
+    ctx.fillStyle=winGrad;ctx.fill();
+    ctx.strokeStyle='rgba(79,195,247,.3)';ctx.lineWidth=1;ctx.stroke();
+    // nose cone (rounded dome)
+    ctx.beginPath();
+    ctx.moveTo(-r*.28,-r*.48);
+    ctx.bezierCurveTo(-r*.14,-r*1.05,r*.14,-r*1.05,r*.28,-r*.48);
+    ctx.lineTo(r*.28,-r*.44);
+    ctx.lineTo(-r*.28,-r*.44);
+    ctx.closePath();
+    ctx.fillStyle='#f0f0f0';ctx.fill();
+    ctx.strokeStyle='#000';ctx.lineWidth=0.8;ctx.stroke();
+    // nose interior orange fill
+    ctx.beginPath();
+    ctx.moveTo(-r*.14,-r*.46);
+    ctx.bezierCurveTo(-r*.07,-r*.86,r*.07,-r*.86,r*.14,-r*.46);
+    ctx.lineTo(-r*.14,-r*.46);
+    ctx.closePath();
+    ctx.fillStyle='rgba(255,180,60,.7)';ctx.fill();
+    ctx.strokeStyle='rgba(255,180,60,.7)';ctx.lineWidth=1.5;ctx.stroke();
+    // (연료통 업그레이드 표시는 위 보조로켓 구간 색칠로 대체됨)
+    ctx.restore();
+
+    // control circle
+    if(this.selected){
+      ctx.save();
+      ctx.translate(s.x,s.y);
+      ctx.beginPath();ctx.arc(0,0,this.controlR,0,Math.PI*2);
+      ctx.strokeStyle='rgba(79,195,247,.3)';ctx.lineWidth=1;
+      ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
+      // crosshair
+      ctx.strokeStyle='rgba(79,195,247,.15)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(-this.controlR,0);ctx.lineTo(this.controlR,0);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(0,-this.controlR);ctx.lineTo(0,this.controlR);ctx.stroke();
+      // drag line (from drag gesture, relative to click start)
+      if(this.dragActive){
+        const dx=this.dragEX-this.dragSX, dy=this.dragEY-this.dragSY;
+        const dist=Math.sqrt(dx*dx+dy*dy);
+        const cr=this.controlR;
+        const clamped=Math.min(dist,cr);
+        const ndx=dist<1?0:dx/dist*clamped, ndy=dist<1?0:dy/dist*clamped;
+        ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(ndx,ndy);
+        ctx.strokeStyle='rgba(79,195,247,.6)';ctx.lineWidth=2;ctx.stroke();
+        ctx.beginPath();ctx.arc(ndx,ndy,5,0,Math.PI*2);
+        ctx.fillStyle='#4fc3f7';ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // predicted trajectory (where the ship drifts if no further thrust is applied)
+    this.drawTrajectory(s);
+
+    // velocity arrow
+    const spd=this.speed();
+    if(spd>0.1){
+      const vlen=Math.min(spd*12,50);
+      const vang=Math.atan2(this.vy,this.vx);
+      const targetLS=relevantLandSpeed(this);
+      const safe=spd<targetLS;
+      ctx.save();ctx.translate(s.x,s.y);ctx.rotate(vang);
+      ctx.strokeStyle=safe?'rgba(68,255,136,.5)':'rgba(255,80,80,.5)';
+      ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(vlen,0);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(vlen,0);ctx.lineTo(vlen-5,-4);ctx.lineTo(vlen-5,4);ctx.closePath();
+      ctx.fillStyle=safe?'rgba(68,255,136,.5)':'rgba(255,80,80,.5)';ctx.fill();
+      ctx.restore();
+    }
+    // gravity direction indicators
+    for(const pl of G.planets){
+      const ddx=pl.wx-this.wx, ddy=pl.wy-this.wy;
+      const dist=Math.sqrt(ddx*ddx+ddy*ddy);
+      const gfR=pl.data.gravity*600;
+      if(dist>gfR||dist<pl.data.size+5) continue;
+      const ang=Math.atan2(ddy,ddx);
+      const pull=0.3+0.6*(1-dist/gfR);
+      const len=8+32*pull;
+      ctx.save();ctx.translate(s.x,s.y);ctx.rotate(ang);
+      ctx.strokeStyle=`rgba(255,220,120,${pull})`;ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(2,0);ctx.lineTo(len,0);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(len,0);ctx.lineTo(len-7,-5);ctx.moveTo(len,0);ctx.lineTo(len-7,5);ctx.stroke();
+      ctx.restore();
+    }
+
+    // ── LANDING READINESS INDICATOR (모든 행성, 태양 제외) ──
+    for(const pl of G.planets){
+      if(!pl.data.landSpeed) continue; // 태양(landSpeed=0)은 착륙 불가 → 표시 제외
+      const ddx2=pl.wx-this.wx, ddy2=pl.wy-this.wy;
+      const planetDist=Math.sqrt(ddx2*ddx2+ddy2*ddy2);
+      const nearRange2=pl.data.size*5;
+      if(planetDist<nearRange2){
+        const spd2=this.speed();
+        const ls=pl.data.landSpeed||1.5;
+        const canLand=spd2<ls;
+        const prox=Math.max(0,Math.min(1,1-(planetDist-pl.data.size)/(pl.data.size*4)));
+        const pulse=0.6+0.4*Math.sin(G.gameTime*0.18);
+        const ringR=this.r*2.6+4*pulse;
+        // outer glow ring
+        const grd=ctx.createRadialGradient(s.x,s.y,ringR*0.6,s.x,s.y,ringR*1.5);
+        if(canLand){
+          grd.addColorStop(0,`rgba(68,255,136,${0.35*prox*pulse})`);
+          grd.addColorStop(1,'transparent');
+        } else {
+          grd.addColorStop(0,`rgba(255,60,60,${0.30*prox*pulse})`);
+          grd.addColorStop(1,'transparent');
+        }
+        ctx.save();
+        ctx.beginPath();ctx.arc(s.x,s.y,ringR*1.5,0,Math.PI*2);
+        ctx.fillStyle=grd;ctx.fill();
+        // crisp ring stroke
+        ctx.beginPath();ctx.arc(s.x,s.y,ringR,0,Math.PI*2);
+        ctx.strokeStyle=canLand?`rgba(68,255,136,${0.85*prox})`:`rgba(255,60,60,${0.85*prox})`;
+        ctx.lineWidth=2.5;ctx.stroke();
+        ctx.restore();
+        // screen edge glow
+        const prox2=Math.max(0,Math.min(1,1-(planetDist-pl.data.size)/(pl.data.size*3)));
+        if(prox2>0.2){
+          const edgeAlpha=prox2*0.18*(0.7+0.3*Math.sin(G.gameTime*0.15));
+          const edgeGrd=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.3,W/2,H/2,Math.min(W,H)*0.75);
+          if(canLand){
+            edgeGrd.addColorStop(0,'transparent');
+            edgeGrd.addColorStop(1,`rgba(0,255,100,${edgeAlpha})`);
+          } else {
+            edgeGrd.addColorStop(0,'transparent');
+            edgeGrd.addColorStop(1,`rgba(255,30,30,${edgeAlpha})`);
+          }
+          ctx.save();
+          ctx.fillStyle=edgeGrd;
+          ctx.fillRect(0,0,W,H);
+          ctx.restore();
+        }
+      }
+    }
+  }
+
+  // Simulate future path under gravity only (no thrust) and draw as a dotted line.
+  drawTrajectory(s){
+    if(this.speed()<0.05) return;
+    let px=this.wx, py=this.wy, pvx=this.vx, pvy=this.vy;
+    const steps=90, stepDt=1.4;
+    ctx.save();
+    // glow layer
+    ctx.setLineDash([3,5]);
+    ctx.strokeStyle='rgba(79,195,247,.15)';
+    ctx.lineWidth=5;
+    ctx.beginPath();
+    let first=true;
+    for(let i=0;i<steps;i++){
+      for(const pl of G.planets){
+        const ddx=pl.wx-px, ddy=pl.wy-py;
+        const dist=Math.sqrt(ddx*ddx+ddy*ddy);
+        if(dist<pl.data.size+3){ i=steps; break; }
+        const f=pl.data.gravity*80/(dist*dist+40)*stepDt;
+        pvx+=ddx/dist*f; pvy+=ddy/dist*f;
+      }
+      px+=pvx*stepDt*1.4; py+=pvy*stepDt*1.4;
+      const sx=CX+G.camX+px*G.zoom, sy=CY+G.camY+py*G.zoom;
+      if(first){ ctx.moveTo(sx,sy); first=false; } else { ctx.lineTo(sx,sy); }
+    }
+    ctx.stroke();
+    // main trajectory line
+    ctx.setLineDash([5,6]);
+    ctx.strokeStyle='rgba(255,255,255,.6)';
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    first=true;
+    // reset sim
+    px=this.wx; py=this.wy; pvx=this.vx; pvy=this.vy;
+    for(let i=0;i<steps;i++){
+      for(const pl of G.planets){
+        const ddx=pl.wx-px, ddy=pl.wy-py;
+        const dist=Math.sqrt(ddx*ddx+ddy*ddy);
+        if(dist<pl.data.size+3){ break; }
+        const f=pl.data.gravity*80/(dist*dist+40)*stepDt;
+        pvx+=ddx/dist*f; pvy+=ddy/dist*f;
+      }
+      px+=pvx*stepDt*1.4; py+=pvy*stepDt*1.4;
+      const sx=CX+G.camX+px*G.zoom, sy=CY+G.camY+py*G.zoom;
+      if(first){ ctx.moveTo(sx,sy); first=false; } else { ctx.lineTo(sx,sy); }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  PARTICLES
+// ═══════════════════════════════════════════════
+function spawnParticle(wx,wy,color,type){
+  const spd=type==='explosion'?Math.random()*4+1:Math.random()*1+0.3;
+  const ang=Math.random()*Math.PI*2;
+  G.particles.push({
+    wx,wy,
+    vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,
+    life:1, decay:type==='explosion'?0.015:0.025,
+    color,type,
+    r:type==='explosion'?Math.random()*4+2:Math.random()*3+1,
+  });
+}
+function updateParticles(dt){
+  for(let i=G.particles.length-1;i>=0;i--){
+    const p=G.particles[i];
+    p.wx+=p.vx*dt*0.4;p.wy+=p.vy*dt*0.4;
+    p.life-=p.decay*dt;
+    if(p.life<=0) G.particles.splice(i,1);
+  }
+}
+function drawParticles(){
+  for(const p of G.particles){
+    const s={x:CX+G.camX+p.wx*G.zoom,y:CY+G.camY+p.wy*G.zoom};
+    ctx.globalAlpha=p.life;
+    ctx.beginPath();ctx.arc(s.x,s.y,p.r*G.zoom,0,Math.PI*2);
+    ctx.fillStyle=p.color;ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+// ═══════════════════════════════════════════════
+//  FUEL ITEMS
+// ═══════════════════════════════════════════════
+function spawnFuelItems(count){
+  G.fuelItems=[];
+  // spawn near mission planets so player can actually reach them
+  const land=(G.missions&&G.missions.land)||[];
+  for(let i=0;i<count;i++){
+    let wx, wy;
+    if(land.length>0){
+      // pick a random mission planet and place fuel near it
+      const m=land[i%land.length];
+      const pl=G.planets[m.planetIdx];
+      const ang=Math.random()*Math.PI*2;
+      const orbitDist=pl.data.orbitR||400;
+      // place fuel at 30-90% of the planet's orbit radius, spread around planet
+      const spreadAng=Math.atan2(pl.wy,pl.wx)+(Math.random()-.5)*2.8;
+      const spread=orbitDist*(0.3+Math.random()*0.6);
+      wx=Math.cos(spreadAng)*spread;
+      wy=Math.sin(spreadAng)*spread;
+    } else {
+      // fallback: random placement
+      const ang=Math.random()*Math.PI*2;
+      const dist=400+Math.random()*1800;
+      wx=Math.cos(ang)*dist; wy=Math.sin(ang)*dist;
+    }
+    G.fuelItems.push({wx,wy,r:12,pulse:0});
+  }
+}
+function drawFuelItems(){
+  for(const fi of G.fuelItems){
+    fi.pulse=(fi.pulse||0)+0.05;
+    const s={x:CX+G.camX+fi.wx*G.zoom,y:CY+G.camY+fi.wy*G.zoom};
+    const r=Math.max(5,fi.r*G.zoom);
+    const glow=Math.sin(fi.pulse)*0.3+0.7;
+    ctx.save();
+    ctx.globalAlpha=glow;
+    const g=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,r*2.5);
+    g.addColorStop(0,'#4fc3f7aa');g.addColorStop(1,'transparent');
+    ctx.beginPath();ctx.arc(s.x,s.y,r*2.5,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+    ctx.beginPath();ctx.arc(s.x,s.y,r,0,Math.PI*2);
+    ctx.fillStyle='#4fc3f7';ctx.fill();
+    if(r>6){
+      ctx.font=`${Math.max(8,r*1.2)}px Inter`;ctx.fillStyle='#fff';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('⚡',s.x,s.y);
+    }
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  SPACE DEBRIS (우주 쓰레기 — 치우면 돈, 교육적)
+//  설계: 경로 밖(주로 비목표 행성 주위 공전)에 배치, 가치∝거리/위험.
+//        돈 = "남은 연료로 치운 만큼" → 연료 효율(=게임 핵심 실력)이 곧 부.
+// ═══════════════════════════════════════════════
+const DEBRIS_INFO={
+  fragment:  {icon:'🔩', name:'파편',     fact:'작은 파편도 총알보다 빨라서 위험해요!'},
+  rocket:    {icon:'🚀', name:'로켓 잔해', fact:'다 쓴 로켓이 그대로 우주에 남아 떠다녀요.'},
+  satellite: {icon:'📡', name:'폐위성',   fact:'고장난 위성이에요. 안 치우면 서로 부딪혀요(케슬러 증후군).'},
+};
+function spawnDebris(){
+  G.debris=[];
+  if(G.mode!=='game') return; // 튜토리얼/히든엔 별도
+  const stage=G.curStage; if(!stage) return;
+  // 미션 필수 쓰레기 + 보너스 쓰레기(돈·청소점수). 둘 다 목표 행성 인근 → 모두 닿을 수 있음.
+  const missionVals=(stage.debrisVals||[]).slice(0, G.missions.collect.need);
+  const values=missionVals.concat(stage.bonusVals||[]);
+  if(!values.length) return;
+  // 앵커 = 목표(착륙) 행성 자신 → 목표와 함께 공전하므로 시간이 지나도 항상 목표 권역 안.
+  // (옛 '비목표 행성에 둬서 우회 유도'는 행성마다 공전속도가 달라 멀어지는 문제 → 폐기. 우회감은 넓은 궤도반경으로 대체)
+  const landIdx=G.missions.land.map(m=>m.planetIdx).filter(i=>G.planets[i]);
+  if(!landIdx.length) return;
+  // land가 여러 개면 시작점 가까운 행성=싼 값, 먼 행성=비싼 값
+  const sx=G.ship?G.ship.wx:0, sy=G.ship?G.ship.wy:0;
+  const sortedLand=landIdx.slice().sort((a,b)=>Math.hypot(G.planets[a].wx-sx,G.planets[a].wy-sy)-Math.hypot(G.planets[b].wx-sx,G.planets[b].wy-sy));
+  values.forEach((v,k)=>{
+    const ai=sortedLand[k % sortedLand.length]; // 목표 행성들에 라운드로빈 분배
+    const pl=G.planets[ai];
+    // 종류는 값에 약하게만 연동하고 랜덤 → 초반(전부 싼 값)에도 종류가 섞여 보이게
+    const rt=Math.random();
+    let type;
+    if(v<=15)      type = rt<0.45?'fragment' : rt<0.80?'rocket'   : 'satellite';
+    else if(v<=35) type = rt<0.45?'rocket'   : rt<0.75?'fragment' : 'satellite';
+    else           type = rt<0.50?'satellite': rt<0.80?'rocket'   : 'fragment';
+    const r=type==='fragment'?6:type==='rocket'?9:13;
+    G.debris.push({
+      // 표면에서 떨어지되(바로 옆 아님) 목표 권역 안 — 반경 축소로 동선·추력 절감
+      anchorIdx:ai, orbitR:pl.data.size*2.4+25+Math.random()*55,
+      angle:Math.random()*Math.PI*2, rot:Math.random()*Math.PI*2,
+      // 거의 정지(아주 느린 공전) — 빠르게 도는 표적 추격에 연료 과소비되던 문제 해결.
+      spin:(Math.random()<.5?-1:1)*(0.0008+Math.random()*0.0010),
+      rotSpin:(Math.random()<.5?-1:1)*(0.01+Math.random()*0.015), // 자전(시각): 따로 살려 생동감 유지
+      // 같은 종류라도 안 똑같게: 크기 지터 + 좌우 반전
+      sizeJit:0.8+Math.random()*0.5, flip:(Math.random()<0.5?-1:1),
+      value:v, type, r, wx:0, wy:0,
+    });
+  });
+  updateDebris(0);
+}
+function updateDebris(dt){
+  if(!G.debris) return;
+  for(const d of G.debris){
+    const rs=d.rotSpin||d.spin*1.6; // 자전(시각)
+    if(d.anchorIdx==null){ d.rot+=rs*dt; if(d.x0!=null){d.wx=d.x0;d.wy=d.y0;} continue; } // 튜토리얼용 고정
+    const pl=G.planets[d.anchorIdx]; if(!pl) continue;
+    d.angle+=d.spin*dt; d.rot+=rs*dt;
+    d.wx=pl.wx+Math.cos(d.angle)*d.orbitR;
+    d.wy=pl.wy+Math.sin(d.angle)*d.orbitR;
+  }
+}
+function collectDebris(d){
+  AudioFX.play('pickup');
+  G.shopPoints=(G.shopPoints||0)+d.value;
+  G.debrisCleaned=(G.debrisCleaned||0)+1; // 누적 청소(점수)
+  if(G.missions&&G.missions.collect&&G.missions.collect.need>0){
+    G.missions.collect.got=Math.min(G.missions.collect.need,(G.missions.collect.got||0)+1);
+  }
+  const info=DEBRIS_INFO[d.type];
+  if(!G.debrisSeen) G.debrisSeen=new Set();
+  if(!G.debrisSeen.has(d.type)){
+    G.debrisSeen.add(d.type);
+    showToast(`${info.icon} ${info.name} 수거! +${d.value}P<br>${info.fact}`,'success');
+  } else {
+    showToast(`♻️ ${info.name} +${d.value}P`,'info');
+  }
+}
+function drawDebris(){
+  if(!G.debris) return;
+  for(const d of G.debris){
+    const s={x:CX+G.camX+d.wx*G.zoom, y:CY+G.camY+d.wy*G.zoom};
+    const r=Math.max(3,d.r*G.zoom*(d.sizeJit||1));
+    ctx.save();
+    const g=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,r*2.2);
+    g.addColorStop(0,'rgba(200,210,222,.32)'); g.addColorStop(1,'transparent');
+    ctx.beginPath();ctx.arc(s.x,s.y,r*2.2,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+    ctx.translate(s.x,s.y); ctx.rotate(d.rot); if(d.flip) ctx.scale(d.flip,1);
+    ctx.lineJoin='round';
+    const lw=Math.max(0.6,r*0.07);
+    if(d.type==='satellite'){
+      // 폐위성: 본체 + 푸른 태양전지 패널(격자) + 접시 안테나
+      ctx.strokeStyle='#5b6670'; ctx.lineWidth=lw;
+      ctx.beginPath(); ctx.moveTo(-0.538*r,0); ctx.lineTo(0.538*r,0); ctx.stroke(); // 패널 지지대
+      ctx.fillStyle='#2f5f9e'; ctx.strokeStyle='#16284a'; ctx.lineWidth=lw*0.8;
+      ctx.fillRect(-1.577*r,-0.385*r,1.038*r,0.77*r); ctx.strokeRect(-1.577*r,-0.385*r,1.038*r,0.77*r);
+      ctx.fillRect(0.538*r,-0.385*r,1.038*r,0.77*r); ctx.strokeRect(0.538*r,-0.385*r,1.038*r,0.77*r);
+      ctx.beginPath(); // 태양전지 셀 격자
+      ctx.moveTo(-1.23*r,-0.385*r); ctx.lineTo(-1.23*r,0.385*r);
+      ctx.moveTo(-0.885*r,-0.385*r); ctx.lineTo(-0.885*r,0.385*r);
+      ctx.moveTo(-1.577*r,0); ctx.lineTo(-0.538*r,0);
+      ctx.moveTo(1.23*r,-0.385*r); ctx.lineTo(1.23*r,0.385*r);
+      ctx.moveTo(0.885*r,-0.385*r); ctx.lineTo(0.885*r,0.385*r);
+      ctx.moveTo(0.538*r,0); ctx.lineTo(1.577*r,0); ctx.stroke();
+      ctx.fillStyle='#9aa6b2'; ctx.strokeStyle='#5b6670'; ctx.lineWidth=lw;
+      ctx.fillRect(-0.46*r,-0.46*r,0.923*r,0.923*r); ctx.strokeRect(-0.46*r,-0.46*r,0.923*r,0.923*r);
+      ctx.strokeStyle='#cdd6e0'; ctx.lineWidth=lw; // 접시 안테나
+      ctx.beginPath(); ctx.moveTo(0,-0.46*r); ctx.lineTo(0,-0.85*r); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,-0.85*r,0.31*r,0,Math.PI); ctx.stroke();
+      ctx.fillStyle='#ffd24a'; ctx.beginPath(); ctx.arc(0,-0.77*r,Math.max(0.8,r*0.06),0,Math.PI*2); ctx.fill();
+    } else if(d.type==='rocket'){
+      // 로켓 잔해: 부서진 추진체(찢긴 단면) + 꺼진 노즐 + 그을음
+      ctx.fillStyle='#9aa6b2'; ctx.strokeStyle='#5b6670'; ctx.lineWidth=lw;
+      ctx.beginPath();
+      ctx.moveTo(-0.42*r,0.77*r); ctx.lineTo(-0.42*r,-0.62*r); ctx.lineTo(-0.27*r,-0.92*r);
+      ctx.lineTo(-0.12*r,-0.58*r); ctx.lineTo(0.08*r,-1.0*r); ctx.lineTo(0.27*r,-0.62*r);
+      ctx.lineTo(0.42*r,-0.85*r); ctx.lineTo(0.42*r,0.77*r); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='rgba(182,192,203,.55)'; ctx.fillRect(-0.346*r,-0.54*r,0.135*r,1.23*r); // 원통 음영(밝은면)
+      ctx.fillStyle='rgba(106,116,128,.6)'; ctx.fillRect(0.23*r,-0.58*r,0.154*r,1.27*r); // 어두운면
+      ctx.strokeStyle='#5b6670'; ctx.lineWidth=lw*0.7; // 패널 이음새
+      ctx.beginPath(); ctx.moveTo(-0.42*r,-0.19*r); ctx.lineTo(0.42*r,-0.19*r);
+      ctx.moveTo(-0.42*r,0.27*r); ctx.lineTo(0.42*r,0.27*r); ctx.stroke();
+      ctx.fillStyle='rgba(51,48,43,.5)'; ctx.beginPath(); ctx.ellipse(-0.04*r,0.46*r,0.31*r,0.19*r,0,0,Math.PI*2); ctx.fill(); // 그을음
+      ctx.fillStyle='#79858f'; ctx.strokeStyle='#4b545e'; ctx.lineWidth=lw*0.8; // 뜯긴 금속조각
+      ctx.beginPath(); ctx.moveTo(0.42*r,-0.73*r); ctx.lineTo(0.73*r,-0.885*r); ctx.lineTo(0.615*r,-0.538*r); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle='#5b6670'; ctx.lineWidth=lw*0.7; // 끊어진 배선
+      ctx.beginPath(); ctx.moveTo(-0.46*r,-0.5*r); ctx.quadraticCurveTo(-0.73*r,-0.615*r,-0.808*r,-0.385*r); ctx.stroke();
+      ctx.fillStyle='#6f7c8a'; ctx.strokeStyle='#4b545e'; ctx.lineWidth=lw; // 꺼진 엔진 노즐
+      ctx.beginPath(); ctx.moveTo(-0.346*r,0.77*r); ctx.lineTo(0.346*r,0.77*r); ctx.lineTo(0.5*r,1.27*r); ctx.lineTo(-0.5*r,1.27*r); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#1b1815'; ctx.beginPath(); ctx.ellipse(0,1.27*r,0.5*r,0.135*r,0,0,Math.PI*2); ctx.fill();
+    } else {
+      // 파편: 입체 바위(밝은면/어두운면 + 균열)
+      ctx.fillStyle='#8a96a2'; ctx.strokeStyle='#454e58'; ctx.lineWidth=lw;
+      ctx.beginPath();
+      ctx.moveTo(-1.0*r,0.13*r); ctx.lineTo(-0.27*r,-0.87*r); ctx.lineTo(0.73*r,-0.53*r);
+      ctx.lineTo(1.03*r,0.27*r); ctx.lineTo(0.33*r,1.0*r); ctx.lineTo(-0.77*r,0.7*r); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#b6c0cb'; ctx.beginPath(); // 밝은 면
+      ctx.moveTo(-0.27*r,-0.87*r); ctx.lineTo(0.73*r,-0.53*r); ctx.lineTo(0.2*r,-0.23*r); ctx.lineTo(-0.3*r,-0.43*r); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#69737f'; ctx.beginPath(); // 어두운 면
+      ctx.moveTo(0.33*r,1.0*r); ctx.lineTo(-0.77*r,0.7*r); ctx.lineTo(-0.27*r,0.13*r); ctx.lineTo(0.53*r,0.2*r); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle='#454e58'; ctx.lineWidth=lw*0.8; // 균열
+      ctx.beginPath(); ctx.moveTo(-0.03*r,-0.37*r); ctx.lineTo(0.1*r,0.07*r); ctx.lineTo(-0.07*r,0.53*r); ctx.stroke();
+    }
+    ctx.restore();
+    if(r>5){
+      ctx.font='9px Orbitron,monospace'; ctx.fillStyle='#cdd6e0'; ctx.textAlign='center';
+      ctx.fillText('+'+d.value, s.x, s.y-r-6);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  MISSION TARGET INDICATOR
+// ═══════════════════════════════════════════════
+function drawMissionIndicator(){
+  if(!G.ship||G.ship.exploding) return;
+  // game mode: only show if navigator purchased. 히든미션은 항상 표시(왜소행성 안내).
+  if(G.mode==='game'&&!G.hiddenTarget&&!G.upgrades.navigator) return;
+  let tgt;
+  if(G.hiddenTarget){ const b=G.hiddenTarget; tgt={x:b.wx,y:b.wy,r:b.def.size,color:b.def.color,name:b.def.name}; }
+  else { tgt=recTargetPos(nextRecTarget()); }
+  if(!tgt) return;
+  const ss=G.ship.screen();
+  const dx=tgt.x-G.ship.wx, dy=tgt.y-G.ship.wy; // 월드 각도=화면 각도(카메라 회전 없음)
+  const wdist=Math.hypot(dx,dy);
+  if(wdist<tgt.r*3+80) return; // close enough, no indicator needed
+  const ang=Math.atan2(dy,dx);
+  const margin=60;
+  const ex=Math.max(margin,Math.min(W-margin,ss.x+Math.cos(ang)*120));
+  const ey=Math.max(margin,Math.min(H-margin,ss.y+Math.sin(ang)*120));
+  ctx.save();
+  ctx.translate(ex,ey);ctx.rotate(ang);
+  ctx.beginPath();ctx.moveTo(12,0);ctx.lineTo(-4,-6);ctx.lineTo(-4,6);ctx.closePath();
+  ctx.fillStyle=(tgt.color||'#fff')+'cc';ctx.fill();
+  ctx.font='9px Orbitron,monospace';ctx.fillStyle=tgt.color||'#fff';
+  ctx.textAlign='center';ctx.fillText(tgt.name,0,-12);
+  ctx.fillStyle='rgba(255,255,255,.45)';ctx.fillText(wdist.toFixed(0)+'u',0,-2);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════
+// 속도계/속도선 색 판정: 지금 접근 중인 가장 가까운 행성의 착륙 허용속도
+// (사정권 안이면 그 행성 기준, 밖이면 현재 미션 목표 기준)
+function relevantLandSpeed(ship){
+  if(!ship) return 1.5;
+  let best=null, bestEdge=Infinity;
+  for(const pl of G.planets){
+    if(!pl.data.landSpeed) continue; // 태양 제외(착륙 불가)
+    const edge=Math.hypot(pl.wx-ship.wx, pl.wy-ship.wy)-pl.data.size;
+    if(edge<bestEdge){ bestEdge=edge; best=pl; }
+  }
+  if(best && bestEdge < best.data.size*5) return best.data.landSpeed;
+  // 사정권 밖이면 아직 착륙 안 한 목표 행성 기준
+  const lm=G.missions&&G.missions.land&&G.missions.land.find(m=>!m.done);
+  return lm ? (G.planets[lm.planetIdx]?.data.landSpeed||1.5) : 1.5;
+}
+
+let toastTimer=null;
+function showToast(msg,type='info'){
+  const t=document.getElementById('toast');
+  t.innerHTML=msg;t.className='show '+type;
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.className='',2000);
+}
+
+// ═══════════════════════════════════════════════
+//  HUD UPDATE
+// ═══════════════════════════════════════════════
+function updateHUD(){
+  const fuelLv=G.upgrades.fuelTank||0;
+  const fp=G.fuel/G.maxFuel*100;
+  document.getElementById('fuel-val').textContent=fp.toFixed(0)+'%';
+  document.getElementById('fuel-val-num').textContent=`${G.fuel.toFixed(0)} / ${G.maxFuel}`;
+  const badge=document.getElementById('fuel-lv-badge');
+  if(fuelLv>0){ badge.style.opacity='1'; badge.textContent=`+${fuelLv*20}`; }
+  else { badge.style.opacity='0'; }
+  const fb=document.getElementById('fuel-bar');
+  fb.style.width=fp+'%';
+  fb.style.background=fp>30?'linear-gradient(90deg,#4fc3f7,#00e5ff)':
+                      fp>15?'linear-gradient(90deg,#ffaa00,#ffcc44)':
+                            'linear-gradient(90deg,#ff4444,#ff6644)';
+  const spd=G.ship?G.ship.speed():0;
+  document.getElementById('vel-val').textContent=spd.toFixed(2);
+  const targetLS=relevantLandSpeed(G.ship);
+  const safe=spd<targetLS;
+  document.getElementById('vel-dot').style.background=safe?'#44ff88':'#ff4444';
+  // timer
+  if(G.timerOn){
+    const m=Math.floor(G.timeLeft/60).toString().padStart(2,'0');
+    const s=Math.floor(G.timeLeft%60).toString().padStart(2,'0');
+    const tv=document.getElementById('timer-val');
+    tv.textContent=m+':'+s;
+    tv.style.color=G.timeLeft<30?'#ff4444':'#ffaa00';
+  } else {
+    document.getElementById('timer-val').textContent='--:--';
+  }
+  // 보유 P 상시 표시
+  const pv=document.getElementById('points-val');
+  if(pv) pv.textContent=(G.shopPoints||0);
+  // refresh toggle visibility based on mission count
+  if(window._refreshMissionToggle) window._refreshMissionToggle();
+  // mission list (타입별: 착륙/조사/쓰레기)
+  const ml=document.getElementById('mission-list');
+  if(ml && G.missions && G.missions.land){
+    ml.innerHTML='';
+    const entries=missionEntries();
+    entries.forEach(e=>{
+      const div=document.createElement('div');
+      div.className='mission-item'+(e.done?' done':e.active?' active':'');
+      div.innerHTML=`<div class="mission-dot" style="background:${e.color}"></div>${e.label}`
+        +(e.active&&!e.done?' <span style="margin-left:auto;font-size:9px;color:var(--warn)">← 추천</span>':'');
+      ml.appendChild(div);
+    });
+    // mission summary (collapsed)
+    const ms=document.getElementById('mission-summary');
+    if(ms){
+      ms.innerHTML='';
+      const done=entries.filter(e=>e.done).length, total=entries.length;
+      const recEntry=entries.find(e=>e.active&&!e.done)||entries.find(e=>!e.done);
+      if(recEntry){
+        ms.innerHTML=`<div class="mission-dot" style="background:${recEntry.color};width:9px;height:9px;border-radius:50%;flex-shrink:0;"></div>`
+          +`<span style="font-size:13px;font-family:'Orbitron',monospace;color:var(--warn);font-weight:700;">${recEntry.label.replace(/^[^ ]+ /,'')}</span>`
+          +`<span style="font-size:10px;color:rgba(255,255,255,.35);margin-left:auto;">${done}/${total}</span>`;
+      }
+    }
+  }
+}
+// HUD/요약용 미션 항목 목록(착륙·조사·쓰레기). active=내비 추천 목표.
+function missionEntries(){
+  if(!G.missions||!G.missions.land) return [];
+  const rec=nextRecTarget();
+  const out=[];
+  G.missions.land.forEach((m,i)=>{
+    const pl=G.planets[m.planetIdx];
+    out.push({color:pl?pl.data.color:'#fff', label:`🛬 ${m.name} 착륙`, done:m.done, active:rec&&rec.type==='land'&&rec.i===i});
+  });
+  G.missions.visit.forEach((m,i)=>{
+    const s=findSat(m.planet,m.sat);
+    out.push({color:s?s.def.color:'#fff', label:`🔬 ${m.sat} 조사`, done:m.done, active:rec&&rec.type==='visit'&&rec.i===i});
+  });
+  if(G.missions.collect.need>0){
+    const got=G.missions.collect.got||0, need=G.missions.collect.need;
+    out.push({color:'#8fe5c0', label:`♻️ 쓰레기 ${got}/${need}`, done:got>=need, active:false});
+  }
+  return out;
+}
+function missionTotal(){ return missionEntries().length; }
+
+// mission panel toggle (mobile: start collapsed, hidden when only 1 mission)
+(function(){
+  const panel=document.getElementById('mission-panel');
+  if(!panel) return;
+  let lastMissionCount=null; // 미션 개수가 바뀔 때만 초기 펼침/접힘 상태를 재설정
+  function refreshMissionToggle(){
+    const isMobile=window.innerWidth<=768;
+    const total=missionTotal();
+    const single=total<=1;
+    const icon=document.getElementById('mission-toggle-icon');
+    if(single){
+      // 1개면 항상 펼침, 토글 아이콘 숨김
+      panel.classList.remove('collapsed');
+      if(icon) icon.style.display='none';
+    } else {
+      if(icon) icon.style.display='';
+      if(total!==lastMissionCount && isMobile){
+        panel.classList.add('collapsed');
+      }
+    }
+    lastMissionCount=total;
+  }
+  // expose so updateHUD can call it
+  window._refreshMissionToggle=refreshMissionToggle;
+  refreshMissionToggle();
+  panel.addEventListener('click',()=>{
+    if(missionTotal()<=1) return;
+    panel.classList.toggle('collapsed');
+  });
+})();
+
+// ═══════════════════════════════════════════════
+//  GAME INIT
+// ═══════════════════════════════════════════════
+function initPlanets(){
+  G.planets=PLANET_DATA.map((d,i)=>new Planet(d,i*(Math.PI*2/PLANET_DATA.length)));
+  // 추가 천체(왜소행성·혜성) 생성
+  G.extraBodies=EXTRA_BODIES.map(d=>({def:d, angle:Math.random()*Math.PI*2, wx:0, wy:0}));
+  updateExtraBodies(0);
+}
+
+// 추가 천체 공전 위치 갱신 (태양을 초점으로 하는 타원 궤도)
+function updateExtraBodies(dt){
+  if(!G.extraBodies) return;
+  for(const b of G.extraBodies){
+    b.angle += (Math.PI*2/b.def.period)*dt*0.0026;
+    const a=b.def.orbitR, e=b.def.ecc||0;
+    const r=a*(1-e*e)/(1+e*Math.cos(b.angle));
+    b.wx=Math.cos(b.angle)*r; b.wy=Math.sin(b.angle)*r;
+  }
+}
+
+// 추가 천체 그리기 (왜소행성=작은 원, 혜성=가스 꼬리)
+function drawExtraBodies(){
+  if(!G.extraBodies) return;
+  for(const b of G.extraBodies){
+    const sx=CX+G.camX+b.wx*G.zoom, sy=CY+G.camY+b.wy*G.zoom;
+    const r=Math.max(2,b.def.size*G.zoom);
+    const col=b.def.color;
+    if(b.def.kind==='comet'){
+      const dist=Math.hypot(b.wx,b.wy)||1;
+      const ux=b.wx/dist, uy=b.wy/dist;          // 태양→혜성 방향(꼬리는 태양 반대쪽)
+      const tailLen=Math.max(30,Math.min(380,(2600-dist)*0.18))*G.zoom; // 태양에 가까울수록 길게
+      const tx=sx+ux*tailLen, ty=sy+uy*tailLen;
+      const grd=ctx.createLinearGradient(sx,sy,tx,ty);
+      grd.addColorStop(0,'rgba(190,232,255,0.5)');
+      grd.addColorStop(0.4,'rgba(160,210,255,0.22)');
+      grd.addColorStop(1,'rgba(190,232,255,0)');
+      ctx.save();
+      ctx.strokeStyle=grd; ctx.lineWidth=Math.max(3,r*1.8); ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(tx,ty);ctx.stroke();
+      ctx.restore();
+      // 핵
+      const hg=ctx.createRadialGradient(sx-r*.3,sy-r*.3,0,sx,sy,r);
+      hg.addColorStop(0,'#ffffff');hg.addColorStop(0.6,col);hg.addColorStop(1,col+'66');
+      ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fillStyle=hg;ctx.fill();
+    } else {
+      // 왜소행성: 은은한 글로우 + 본체
+      const gg=ctx.createRadialGradient(sx,sy,0,sx,sy,r*2.4);
+      gg.addColorStop(0,col+'44');gg.addColorStop(1,'transparent');
+      ctx.beginPath();ctx.arc(sx,sy,r*2.4,0,Math.PI*2);ctx.fillStyle=gg;ctx.fill();
+      const pg=ctx.createRadialGradient(sx-r*.3,sy-r*.3,0,sx,sy,r);
+      pg.addColorStop(0,'#ffffffaa');pg.addColorStop(0.5,col);pg.addColorStop(1,col+'88');
+      ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fillStyle=pg;ctx.fill();
+    }
+    // 이름표 (줌인 시)
+    if(G.zoom>0.5){
+      ctx.font=`${Math.max(8,9*G.zoom)}px 'Orbitron',monospace`;
+      ctx.fillStyle='rgba(255,255,255,.5)';ctx.textAlign='center';
+      ctx.fillText(b.def.name,sx,sy+r+12*G.zoom);
+    }
+  }
+}
+
+// ── 도감 근접 발견 ──
+function codexCount(){ return G.discovered?G.discovered.size:0; }
+
+// ── 최종점수(4c): 도감점수 + 별점합×50 + 게임점수(최고 한판) ──
+function bodyScore(name){
+  const e=CODEX_ENTRIES.find(x=>x.name===name); if(!e) return 0;
+  return e.cat==='행성'?100 : e.cat==='위성'?50 : 150; // 별/왜소행성/혜성=레어 150
+}
+function codexScore(set){ let s=0; if(!set) return 0; for(const e of CODEX_ENTRIES) if(set.has(e.name)) s+=bodyScore(e.name); return s; }
+function starsSum(map){ let s=0; if(!map) return 0; for(const k in map) s+=(map[k]||0); return s; } // 스테이지 별(효율 등급) 합 — 표시용
+// 추진효율 점수 합(스테이지별 최고 기록 + 히든)
+function effScoreSum(effMap){ let s=0; if(!effMap) return 0; for(const k in effMap){ if(isNaN(+k)) continue; s+=(effMap[k]||0); } return s; } // 숫자 키(일반 스테이지)만 합산 — 히든은 점수 제외
+const CLEANUP_PER=5; // 쓰레기 1개 청소당 점수
+// 남은연료 비율 → 별 등급(3★ 연료 50%↑ 남김 · 2★ 25%↑ · 1★ 클리어) — 후하게(초등학생도 잘하면 3★)
+function effStarTier(eff){ return eff>=0.5?3:eff>=0.25?2:1; }
+// 최종점수 = 도감 + 추진효율합 + 청소(개당 5)  ※별은 효율의 시각등급이라 점수 따로 안 더함
+function finalScoreOf(discoveredSet, effMap, debrisCleaned){
+  return codexScore(discoveredSet) + effScoreSum(effMap) + (debrisCleaned||0)*CLEANUP_PER;
+}
+function profileFinalScore(pr){
+  return finalScoreOf(new Set(pr.discovered||[]), pr.effScore||{}, pr.debrisCleaned||0);
+}
+function liveFinalScore(){
+  return finalScoreOf(G.discovered, G.effScore||{}, G.debrisCleaned||0);
+}
+// 결과/엔딩에 넣을 최종점수 박스
+function finalScoreBoxHTML(){
+  const fs=liveFinalScore();
+  const cx=codexScore(G.discovered), es=effScoreSum(G.effScore), cl=(G.debrisCleaned||0)*CLEANUP_PER;
+  return `<div class="final-score-box"><div class="fs-label">🌌 최종점수</div>`
+    +`<div class="fs-value">${fs.toLocaleString()}</div>`
+    +`<div class="fs-break">📖 도감 ${cx} + 🚀 연료효율 ${es} + ♻️ 청소 ${cl}</div></div>`;
+}
+function discover(name){
+  if(!G.discovered) G.discovered=new Set();
+  if(G.discovered.has(name)) return;
+  G.discovered.add(name);
+  showToast(`🛰 ${name} 발견!<br>도감 ${codexCount()}/${CODEX_ENTRIES.length}`,'success');
+  saveCurrentProfile();
+}
+// 매 프레임: 우주선이 천체에 가까워지면 발견(첫 1회). 행성은 착륙으로 발견(onLanded).
+function checkDiscoveries(){
+  if(G.mode!=='game') return; // 튜토리얼에선 실제 도감 등록 안 함(본게임부터 수집)
+  if(!G.ship||G.ship.exploding||G.ship.landed) return;
+  if(!G.discovered) G.discovered=new Set();
+  const sx=G.ship.wx, sy=G.ship.wy;
+  const tryDiscover=(name,bx,by,bsize)=>{
+    if(G.discovered.has(name)) return;
+    if(Math.hypot(bx-sx,by-sy) < bsize*2+60) discover(name);
+  };
+  tryDiscover('태양',0,0,80);
+  for(const pl of G.planets) for(const sat of pl.sats) tryDiscover(sat.def.name, sat.x, sat.y, sat.def.size);
+  if(G.extraBodies) for(const b of G.extraBodies) tryDiscover(b.def.name, b.wx, b.wy, b.def.size);
+}
+
+function initShip(){
+  // 수성 근처에서 시작: 수성 오른쪽 살짝 위로 떨어진 곳에 정지 상태로 스폰
+  // (가장 안쪽 행성에서 출발 → 수성·금성·지구·…·해왕성 순으로 거리가 단조 증가, 난이도 자연 상승)
+  const merc=G.planets&&G.planets.find(p=>p.data.name==='수성');
+  let sx=0, sy=-500;
+  if(merc){
+    const off=merc.data.size+200;                   // 수성 표면에서 약 200 떨어진 안전 거리
+    const ang=-Math.PI/8;                            // 오른쪽(+x) 살짝 위(-y, 약 22.5°)
+    sx=merc.wx+Math.cos(ang)*off; sy=merc.wy+Math.sin(ang)*off;
+  }
+  G.ship=new Ship(sx,sy);
+  G.fuel=G.maxFuel;
+  G.camX=0;G.camY=0;
+  G.zoom=AUTO_ZOOM;  // start zoomed in
+  G.cameraFollowShip=true;
+  const rb=document.getElementById('btn-return-ship'); if(rb) rb.style.display='none';
+}
+
+// spec: 배열(착륙만 — 튜토리얼) 또는 {land,visit,collect}(스테이지)
+function setMissions(spec){
+  let land, visit=[], collectNeed=0;
+  if(Array.isArray(spec)){ land=spec; }
+  else { land=spec.land||[]; visit=spec.visit||[]; collectNeed=spec.collect||0; }
+  G.missions={
+    land: land.map(name=>({planetIdx:PLANET_DATA.findIndex(d=>d.name===name), name, done:false})),
+    visit: visit.map(([p,s])=>({planet:p, sat:s, done:false})),
+    collect: {need:collectNeed, got:0},
+  };
+  buildRecommendedOrder();
+  G.currentMission=0;
+}
+// 추천 순서(매번 랜덤): 착륙+조사 목표를 섞음. 내비게이터가 첫 미완을 가리킴.
+function buildRecommendedOrder(){
+  const wps=[];
+  G.missions.land.forEach((m,i)=>wps.push({type:'land',i}));
+  G.missions.visit.forEach((m,i)=>wps.push({type:'visit',i}));
+  for(let i=wps.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[wps[i],wps[j]]=[wps[j],wps[i]];}
+  G.recOrder=wps;
+}
+// 추천 목표: 최종 착륙지(land 마지막=스테이지 이름)는 항상 맨 나중. 그 전엔 현재 위치에서 가장 가까운 미완 목표.
+function nextRecTarget(){
+  if(!G.missions||!G.missions.land) return null;
+  const land=G.missions.land, visit=G.missions.visit||[];
+  const finalI=land.length-1; // 최종 목표(마지막 착륙)
+  const cands=[];
+  land.forEach((m,i)=>{ if(i!==finalI && m && !m.done) cands.push({type:'land',i}); });
+  visit.forEach((m,i)=>{ if(m && !m.done) cands.push({type:'visit',i}); });
+  if(cands.length){
+    const sx=G.ship?G.ship.wx:0, sy=G.ship?G.ship.wy:0;
+    let best=null, bestD=Infinity;
+    for(const w of cands){
+      const p=recTargetPos(w); if(!p) continue;
+      const d=Math.hypot(p.x-sx,p.y-sy);
+      if(d<bestD){ bestD=d; best=w; }
+    }
+    return best||cands[0];
+  }
+  // 중간 착륙·위성 조사 끝 → 최종 착륙(미완이면)
+  if(land[finalI] && !land[finalI].done) return {type:'land',i:finalI};
+  return null;
+}
+// 추천 목표의 월드 좌표(내비게이터용)
+function recTargetPos(w){
+  if(!w) return null;
+  if(w.type==='land'){ const pl=G.planets[G.missions.land[w.i].planetIdx]; return pl?{x:pl.wx,y:pl.wy,r:pl.data.size,color:pl.data.color,name:pl.data.name}:null; }
+  const m=G.missions.visit[w.i]; const s=findSat(m.planet,m.sat);
+  return s?{x:s.x,y:s.y,r:s.def.size,color:s.def.color,name:m.sat}:null;
+}
+// 태양계를 너무 벗어나면 경고(일반 스테이지만, 히든 미션 제외). 처음 1회 + 그 뒤 4초 주기.
+function checkBoundary(){
+  if(G.mode!=='game'||!G.ship||G.ship.landed||G.ship.exploding) return;
+  const d=Math.hypot(G.ship.wx, G.ship.wy);
+  if(d>3000){ // 해왕성 궤도(2520) 바깥
+    const now=Date.now();
+    if(now-(G._lastBoundaryWarn||0) > 4000){
+      G._lastBoundaryWarn=now;
+      showToast('⚠️ 태양계를 벗어나고 있어요!<br>방향을 돌려 돌아가세요','danger');
+    }
+  } else { G._lastBoundaryWarn=0; } // 안으로 돌아오면 리셋(다음에 또 즉시 경고)
+}
+// 매 프레임: 위성 조사 방문 감지(근접 인정, 속도 무관)
+function checkMissionProgress(){
+  if(G.mode!=='game'||!G.missions) return;
+  if(!G.ship||G.ship.exploding||G.ship.landed) return;
+  const sx=G.ship.wx, sy=G.ship.wy;
+  for(const m of G.missions.visit){
+    if(m.done) continue;
+    const s=findSat(m.planet,m.sat); if(!s) continue;
+    const r=Math.max(50, s.def.size*3);
+    if(Math.hypot(s.x-sx,s.y-sy)<r){
+      m.done=true;
+      showToast(`🔬 ${m.sat} 조사 완료!`,'success');
+      if(G.discovered&&!G.discovered.has(m.sat)){ G.discovered.add(m.sat); }
+      saveCurrentProfile();
+    }
+  }
+}
+
+function startTutorialStage(step){
+  G.tutorialStep=0; // 단일 단계
+  const tut=TUTORIALS[0];
+  initPlanets();
+  initShip();
+  // 학습용으로 지구에서 더 멀리 출발(움직임·관성·감속을 연습할 공간 확보)
+  const e=tutEarth();
+  if(e){ const r=Math.hypot(e.wx,e.wy)||1; const ux=e.wx/r, uy=e.wy/r;
+    G.ship.wx=e.wx+ux*(e.data.size+440); G.ship.wy=e.wy+uy*(e.data.size+440);
+    G.ship.vx=0; G.ship.vy=0; }
+  G.fuel=tut.fuelStart; G.startFuel=tut.fuelStart; G.maxFuel=tut.fuelStart;
+  G.timeLeft=tut.timeLimit;
+  G.timerOn=false;   // 시간·연료 압박 없음 — 부담 없이 배우기
+  G.hiddenTarget=null;
+  G.fuelItems=[]; G.debris=[]; // 튜토리얼엔 연료템·쓰레기 없음(잔여물 정리)
+  setMissions(tut.targets);
+  G.mode='tutorial';
+  G.gameTime=0;
+  G.score=0;
+  // 인터랙티브 상태 초기화 + 첫 안내
+  G.tut={step:0, praising:false, done:false};
+  showCoach(TUT_STEPS[0].text);
+  document.getElementById('btn-pause').classList.add('hidden'); // 출발 전까지 숨김
+  G.paused=true;
+  // show stage overlay
+  document.getElementById('stage-title').textContent='TUTORIAL';
+  document.getElementById('stage-name').textContent=tut.name;
+  document.getElementById('stage-hint').textContent=tut.hint;
+  const tp=document.getElementById('stage-targets');
+  tp.innerHTML='';
+  tut.targets.forEach(name=>{
+    const pd=PLANET_DATA.find(d=>d.name===name);
+    const div=document.createElement('div');div.className='mp-item';
+    div.innerHTML=`<div class="mp-dot" style="background:${pd.color}"></div>목표: <b>${name}</b> 착륙`;
+    tp.appendChild(div);
+  });
+  showOverlay('ov-stage');
+}
+
+// ── 튜토리얼 코치/진행 ──
+function showCoach(text, praise){
+  const el=document.getElementById('tut-coach');
+  el.querySelector('.coach-bubble').innerHTML=text;
+  el.classList.toggle('praise', !!praise);
+  el.classList.add('show');
+}
+function hideCoach(){ document.getElementById('tut-coach').classList.remove('show'); }
+function pulseEl(id){ const el=document.getElementById(id); if(!el) return; el.classList.remove('tut-pulse'); void el.offsetWidth; el.classList.add('tut-pulse'); }
+function tutAdvance(){
+  if(!G.tut) return;
+  G.tut.step++; G.tut.praising=false;
+  const step=TUT_STEPS[G.tut.step];
+  if(!step){ G.tut.done=true; return; }
+  if(step.onEnter) step.onEnter();
+  showCoach(step.text);
+}
+function tutTick(){
+  if(G.mode!=='tutorial'||!G.tut||G.tut.done||G.tut.praising) return;
+  if(!G.ship||G.ship.landed||G.ship.exploding) return;
+  const step=TUT_STEPS[G.tut.step];
+  if(!step||!step.check) return;
+  if(step.check()){
+    G.tut.praising=true;
+    if(step.praise){ showCoach(step.praise, true); setTimeout(tutAdvance,1500); }
+    else setTimeout(tutAdvance,200);
+  }
+}
+// 튜토리얼에선 폭발 대신 살짝 튕겨내고 다시 시도(부담 줄이기)
+function tutorialSoftBounce(planet){
+  const s=G.ship;
+  showToast('💥 조금 빨랐어요!','danger');
+  for(let i=0;i<22;i++) spawnParticle(s.wx,s.wy,'#ff8800','explosion');
+  const ang=Math.atan2(s.wy-planet.wy,s.wx-planet.wx);
+  s.wx=planet.wx+Math.cos(ang)*(planet.data.size+150);
+  s.wy=planet.wy+Math.sin(ang)*(planet.data.size+150);
+  s.vx=0; s.vy=0; s.noCollideTimer=45;
+  if(G.tut) G.tut.praising=false;
+  showCoach('앗, 너무 빨랐어요! 더 천천히 — 반대로 밀어 <b>속도계가 초록🟢</b>일 때 살짝 닿아요.');
+  if(G.tut) pulseEl('vel-indicator');
+}
+
+// 스테이지 시작(허브에서 선택 or 재시작). idx = 0~7
+function startStage(idx){
+  G.stageIdx=idx; G.gameRound=idx; // 호환
+  G.tut=null; hideCoach();
+  G.hiddenTarget=null;
+  initPlanets();
+  initShip();
+  if(!G.conquered) G.conquered=new Set(); if(!G.discovered) G.discovered=new Set(); if(!G.stageStars) G.stageStars={};
+  if(!G.clearedStages) G.clearedStages=new Set();
+  const stage=STAGES[idx];
+  G.curStage=stage;
+  // ── 방어막: 1스테이지 무료 1개 + 예약 구매분(있으면), 스테이지별 리셋 ──
+  G.shields=(idx===0?1:0)+(G.boughtShields||0); G.boughtShields=0;
+  // ── 연료: 스테이지 고정값(§6.5) + 연료통 업글 ──
+  const fuelLv=G.upgrades.fuelTank||0;
+  G.fuel=stage.fuel+fuelLv*20; G.startFuel=G.fuel; G.maxFuel=G.fuel;
+  // ── 시간: 착륙 경로 거리 비례(넉넉) ──
+  let px=G.ship.wx, py=G.ship.wy, pathDist=0;
+  for(const name of stage.land){ const pl=G.planets.find(p=>p.data.name===name); if(pl){ pathDist+=Math.hypot(pl.wx-px,pl.wy-py); px=pl.wx; py=pl.wy; } }
+  const timeLimit=Math.round(Math.max(120, Math.min(600, 70+pathDist*0.11)));
+  G.timeLeft=timeLimit; G.timerOn=true;
+  setMissions(stage);
+  // 연료 아이템: 전 스테이지 최소 1개 보장(초등학생 안전망), 멀수록 더(최대 4)
+  const fuelCount=Math.max(1, Math.min(Math.floor(pathDist/1800), 4));
+  spawnFuelItems(fuelCount);
+  G.mode='game';
+  spawnDebris(); // 우주 쓰레기(돈) — mode 설정 뒤에
+  // 추진효율 측정 리셋
+  G.gameTime=0; G.score=0; G.thrustFrames=0; G.flightFrames=0;
+  updateConsumableBtns();
+  document.getElementById('btn-pause').classList.add('hidden');
+  const ber=document.getElementById('btn-end-round'); if(ber) ber.classList.add('hidden');
+  G.paused=true;
+  // 스테이지 안내 오버레이
+  document.getElementById('stage-title').textContent=`STAGE ${idx+1} / 8`;
+  document.getElementById('stage-name').textContent=stage.name;
+  const diff='★'.repeat(Math.min(5,1+Math.floor(idx/2)));
+  document.getElementById('stage-hint').textContent=`최종 목표: ${stage.name} 착륙\n난이도 ${diff} · ⏱ ${Math.floor(timeLimit/60)}분 ${timeLimit%60}초 · ⛽ ${G.fuel}\n과제를 모두 끝낸 뒤 마지막 착륙!`;
+  const tp=document.getElementById('stage-targets'); tp.innerHTML='';
+  missionEntries().forEach(e=>{
+    const div=document.createElement('div');div.className='mp-item';
+    div.innerHTML=`<div class="mp-dot" style="background:${e.color}"></div>${e.label}`;
+    tp.appendChild(div);
+  });
+  showOverlay('ov-stage');
+}
+function startMainGame(idx){ startStage(idx); } // 호환 별칭
+
+// ═══════════════════════════════════════════════
+//  HIDDEN MISSION (왜소행성 연료 갈틀릿) — 1회성
+// ═══════════════════════════════════════════════
+function startHiddenMission(idx){
+  G.mode='hidden'; G.hiddenIdx=idx;
+  G.tut=null; hideCoach();
+  initPlanets(); initShip();
+  if(!G.hiddenDone) G.hiddenDone=new Set();
+  const h=HIDDEN_MISSIONS[idx];
+  const fuelLv=G.upgrades.fuelTank||0;
+  const totalPickup=h.pickups*h.pickupAmt;
+  G.shields=(G.boughtShields||0); G.boughtShields=0; // 히든도 예약 방어막만(무료 없음)
+  G.fuel=h.startFuel+fuelLv*10; G.startFuel=G.fuel; G.maxFuel=h.startFuel+fuelLv*10+totalPickup;
+  const target=G.extraBodies.find(b=>b.def.name===h.name);
+  G.hiddenTarget=target;
+  G.missions={land:[],visit:[],collect:{need:0,got:0}}; G.recOrder=[];
+  const dist=target?Math.hypot(target.wx-G.ship.wx,target.wy-G.ship.wy):2000;
+  G.timeLeft=Math.round(Math.max(180,Math.min(720, 90+dist*0.12))); G.timerOn=true;
+  spawnHiddenPickups(h, target);
+  G.debris=[];
+  G.gameTime=0; G.score=0; G.thrustFrames=0; G.flightFrames=0;
+  updateConsumableBtns();
+  document.getElementById('btn-pause').classList.add('hidden');
+  G.paused=true;
+  document.getElementById('stage-title').textContent='✨ 히든 미션';
+  document.getElementById('stage-name').textContent=`${h.name} 탐사`;
+  document.getElementById('stage-hint').textContent=`먼 왜소행성 ${h.name}까지!\n⛽ 빠듯한 연료 ${G.fuel} — 경로의 연료를 모두 먹어야 도달\n⭐ 연료를 많이 남길수록 별 등급↑ (다시 도전해 갱신 가능)`;
+  const tp=document.getElementById('stage-targets'); tp.innerHTML='';
+  const div=document.createElement('div');div.className='mp-item';
+  div.innerHTML=`<div class="mp-dot" style="background:${target?target.def.color:'#cda6ff'}"></div>🔬 ${h.name} 근접 조사`;
+  tp.appendChild(div);
+  showOverlay('ov-stage');
+}
+function spawnHiddenPickups(h, target){
+  G.fuelItems=[];
+  if(!target||!G.ship) return;
+  const sx=G.ship.wx, sy=G.ship.wy, tx=target.wx, ty=target.wy;
+  const ang=Math.atan2(ty-sy,tx-sx)+Math.PI/2; // 경로 직각 방향
+  for(let i=1;i<=h.pickups;i++){
+    const f=i/(h.pickups+1);
+    const px=sx+(tx-sx)*f, py=sy+(ty-sy)*f;
+    const off=(i%2?1:-1)*(120+Math.random()*90); // 좌우 번갈아 — 정밀 비행 유도
+    G.fuelItems.push({wx:px+Math.cos(ang)*off, wy:py+Math.sin(ang)*off, r:12, pulse:0, amt:h.pickupAmt});
+  }
+}
+function checkHiddenMissionProgress(){
+  if(G.mode!=='hidden'||!G.hiddenTarget) return;
+  if(!G.ship||G.ship.exploding||G.ship.landed) return;
+  const b=G.hiddenTarget;
+  const r=Math.max(60, b.def.size*3);
+  if(Math.hypot(b.wx-G.ship.wx,b.wy-G.ship.wy)<r) onHiddenComplete();
+}
+function onHiddenComplete(){
+  const idx=G.hiddenIdx; const h=HIDDEN_MISSIONS[idx];
+  G.timerOn=false;
+  if(G.ship){ G.ship.vx=0; G.ship.vy=0; }
+  if(!G.hiddenDone) G.hiddenDone=new Set();
+  G.hiddenDone.add(idx);
+  const newlyFound = G.discovered && !G.discovered.has(h.name); // 미리 발견했으면 도감 문구 생략
+  if(G.discovered) G.discovered.add(h.name); // 도감 등록(레어)
+  const {eff,tier}=recordEffScore('H'+idx); // 별만 기록(점수 합산 X)
+  G.hiddenTarget=null;
+  saveCurrentProfile();
+  const starBig=`<span style="color:#ffd24a">${'★'.repeat(tier)}</span><span style="color:rgba(255,255,255,.22)">${'★'.repeat(3-tier)}</span>`;
+  document.getElementById('result-title').textContent='✨ 히든 미션 클리어!';
+  document.getElementById('result-score').innerHTML=
+    `<div style="font-size:36px;letter-spacing:5px;line-height:1.1;margin:2px 0">${starBig}</div>`
+    +`<div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:6px">🚀 연료 ${(eff*100).toFixed(0)}% 남김`
+    +(newlyFound?` · 📖 ${h.name} 도감 등록!`:'')+`</div>`;
+  document.getElementById('result-final').innerHTML='';
+  document.getElementById('result-detail').innerHTML=`<span style="font-size:11px;color:rgba(255,255,255,.55)">연료를 더 남기면 ⭐ 갱신 — 다시 도전할 수 있어요</span>`;
+  const btn=document.getElementById('btn-next');
+  btn.textContent='🗺 태양계 지도로';
+  btn.onclick=()=>{hideAllOverlays(); openHub();};
+  document.getElementById('btn-go-shop').style.display='none';
+  showOverlay('ov-result');
+}
+
+// ═══════════════════════════════════════════════
+//  SHOP
+// ═══════════════════════════════════════════════
+const SHOP_ITEMS = [
+  {id:'fuelTank', icon:'⛽', css:'fuel', name:'연료통 업그레이드', desc:i=>`스테이지 시작 연료 +${20*(i+1)} (현재 +${20*i})`, price:i=>[80,160,280,420,600][i]||800, maxLv:5, type:'perm'},
+  {id:'navigator', icon:'🧭', css:'nav', name:'네비게이터', desc:()=>'다음 추천 목표(행성·위성) 방향 표시', price:()=>100, maxLv:1, type:'perm'},
+  {id:'shield', icon:'🛡️', css:'shield', name:'방어막', desc:()=>`다음 판 충돌 1회 방어 (예약: ${G.boughtShields||0}개) · 스테이지별 리셋`, price:()=>40, maxLv:Infinity, type:'consume'},
+  {id:'timeBonus', icon:'⏱', css:'time', name:'시간 연장', desc:()=>'제한시간 +45초', price:()=>25, maxLv:Infinity, type:'consume'},
+  {id:'paint', icon:'🎨', css:'color', name:'우주선 도색', desc:()=>'우주선 색상 변경', price:()=>0, maxLv:1, type:'perm'},
+];
+
+function sayDialog(msg){ document.getElementById('shop-dialog').innerHTML='<span class="speaker">⚙ 정비 로봇:</span> '+msg; }
+
+function renderShop(){
+  document.getElementById('shop-points').textContent=G.shopPoints;
+  const list=document.getElementById('shop-list');list.innerHTML='';
+  let ownedCount=0, totalPerm=0;
+  for(const item of SHOP_ITEMS){
+    const div=document.createElement('div');div.className='shop-item';
+    // icon
+    const iconDiv=document.createElement('div');iconDiv.className='shop-item-icon '+item.css;
+    iconDiv.textContent=item.icon;
+    div.appendChild(iconDiv);
+    // info
+    const info=document.createElement('div');info.className='shop-item-info';
+    const nameRow=document.createElement('div');nameRow.className='shop-item-name';
+    nameRow.textContent=item.name;
+    const desc=document.createElement('div');desc.className='shop-item-desc';
+    const btn=document.createElement('button');btn.className='btn shop-buy-btn';
+    let lv=0, owned=false, maxed=false;
+    if(item.type==='perm'){
+      totalPerm++;
+      lv=G.upgrades[item.id]||0;
+      owned=lv>0;
+      maxed=lv>=item.maxLv;
+      if(item.maxLv>1){
+        const badge=document.createElement('span');badge.className='shop-item-level';
+        badge.textContent=`Lv.${lv}/${item.maxLv}`;
+        nameRow.appendChild(badge);
+        desc.textContent=item.desc(lv);
+        btn.textContent=maxed?'✔ 장착 완료':`${item.price(lv)}P`;
+      } else {
+        desc.textContent=item.desc();
+        btn.textContent=owned?'✔ 보유중':`${item.price()}P`;
+      }
+      if(owned) ownedCount++;
+    } else {
+      const count=G.consumables[item.id]||0;
+      if(count>0){
+        const badge=document.createElement('span');badge.className='shop-item-level';
+        badge.textContent=`×${count}`;
+        nameRow.appendChild(badge);
+      }
+      desc.textContent=item.desc();
+      btn.textContent=`${item.price()}P`;
+    }
+    info.appendChild(nameRow);info.appendChild(desc);div.appendChild(info);
+    if(item.id==='paint'){
+      btn.textContent='선택';
+      btn.disabled=false; btn.style.opacity='1';
+      btn.onclick=openColorPicker;
+    } else if(!maxed){
+      const price=item.type==='perm'?item.price(lv):item.price();
+      btn.disabled=G.shopPoints<price;
+      if(btn.disabled) btn.style.opacity='0.4';
+      btn.onclick=()=>buyItem(item.id);
+    } else {
+      btn.className='btn shop-buy-btn owned';
+      btn.onclick=null;
+    }
+    div.appendChild(btn);list.appendChild(div);
+  }
+  // robot greeting
+  if(ownedCount===totalPerm) sayDialog('모든 장비를 갖추셨군요! 훌륭합니다, 선장님! 🚀');
+  else if(ownedCount>2) sayDialog('훌륭한 선택입니다! 뭘 더 찾으시나요? 😊');
+  else sayDialog('어서 오세요, 선장님! 무엇을 도와드릴까요? 👨‍🚀');
+}
+
+const PAINT_COLORS = [
+  {id:'clr-red', name:'붉은색', hex:'#e74c3c'},
+  {id:'clr-orange', name:'주황색', hex:'#e67e22'},
+  {id:'clr-yellow', name:'노란색', hex:'#f1c40f'},
+  {id:'clr-green', name:'초록색', hex:'#2ecc71'},
+  {id:'clr-blue', name:'파란색', hex:'#3498db'},
+  {id:'clr-indigo', name:'남색', hex:'#9b59b6'},
+  {id:'clr-violet', name:'보라색', hex:'#8e44ad'},
+];
+
+function openColorPicker(){
+  const grid=document.getElementById('color-picker-grid');
+  grid.innerHTML='';
+  for(const c of PAINT_COLORS){
+    const owned=G.upgrades[c.id]===true;
+    const active=G.upgrades.shipColor===c.hex;
+    const swatch=document.createElement('div');
+    swatch.className='color-swatch'+(active?' active':'');
+    const dot=document.createElement('div');
+    dot.className='swatch-dot'; dot.style.background=c.hex;
+    swatch.appendChild(dot);
+    const name=document.createElement('div');name.className='swatch-name';
+    name.textContent=c.name; swatch.appendChild(name);
+    const status=document.createElement('div');status.className='swatch-status';
+    if(active) status.textContent='✔ 장착중';
+    else if(owned) status.textContent='장착';
+    else status.textContent='30P';
+    swatch.appendChild(status);
+    swatch.onclick=()=>{
+      if(active) return;
+      if(!owned){
+        if(G.shopPoints<30){showToast('포인트가 부족합니다!','danger');return;}
+        G.shopPoints-=30;
+        G.upgrades[c.id]=true;
+      }
+      G.upgrades.shipColor=c.hex;
+      openColorPicker();
+      renderShop();
+    };
+    grid.appendChild(swatch);
+  }
+  showOverlay('ov-color-picker');
+}
+
+const SHOP_REPLIES = {
+  fuelTank: ['연료통 장착 완료! 최대 연료량이 증가했습니다.','탱크를 더 단단히 조였습니다!','연비 좋은 새 탱크입니다!','대용량 탱크 장착!','최고급 연료통입니다, 조심히 다루세요!'],
+  navigator: ['네비게이터 장착 완료! 목표 방향을 표시합니다.'],
+  shield: ['방어막 장착! 1회 충돌을 방어합니다.','방어막 추가! 안전 제일!','또 방어막! 이제 좀 안심되네요.','강화 방어막 장착!','최대 방어막!'],
+  timeBonus: ['시간 연장 코드입니다. 미션 중 사용하세요!'],
+};
+
+function buyItem(id){
+  const item=SHOP_ITEMS.find(i=>i.id===id);
+  if(!item) return;
+  let price;
+  if(item.type==='perm'){
+    const lv=G.upgrades[id]||0;
+    if(lv>=item.maxLv) return;
+    price=item.price(lv);
+  } else {
+    price=item.price();
+  }
+  if(G.shopPoints<price) return;
+  // 방어막: 다음 스테이지 한 판에만 적용되는 예약(boughtShields). 스테이지 진입 시 로드 후 리셋.
+  if(id==='shield'){
+    G.shopPoints-=price;
+    G.boughtShields=(G.boughtShields||0)+1;
+    sayDialog(SHOP_REPLIES.shield[0]);
+    renderShop(); saveCurrentProfile();
+    return;
+  }
+  G.shopPoints-=price;
+  let reply;
+  if(item.type==='perm'){
+    if(item.maxLv>1){
+      const newLv=(G.upgrades[id]||0)+1;
+      G.upgrades[id]=newLv;
+      reply=SHOP_REPLIES[id][Math.min(newLv-1,SHOP_REPLIES[id].length-1)];
+    } else {
+      G.upgrades[id]=true;
+      reply=SHOP_REPLIES[id][0];
+    }
+  } else {
+    G.consumables[id]=(G.consumables[id]||0)+1;
+    reply=SHOP_REPLIES[id][0];
+  }
+  sayDialog(reply);
+  renderShop();
+  saveCurrentProfile();
+}
+
+// ═══════════════════════════════════════════════
+//  AUTO-PILOT
+// ═══════════════════════════════════════════════
+function updateConsumableBtns(){
+  const tbtn=document.getElementById('btn-use-timebonus');
+  if(G.mode==='game'&&(G.consumables.timeBonus||0)>0&&G.timerOn){
+    tbtn.classList.remove('hidden');
+    tbtn.textContent=`⏱ +45s (${G.consumables.timeBonus})`;
+  } else { tbtn.classList.add('hidden'); }
+}
+function updateItemBadges(){
+  const panel=document.getElementById('items-panel');
+  const disp=document.getElementById('items-display');
+  disp.innerHTML='';
+  const shieldCount=G.shields||0; // 이번 스테이지 보유 방어막
+  const timeCount=G.consumables.timeBonus||0;
+  if(shieldCount>0){
+    const b=document.createElement('span');b.className='item-badge';
+    b.innerHTML='🛡️<span class="count">×'+shieldCount+'</span>';
+    disp.appendChild(b);
+  }
+  if(timeCount>0){
+    const b=document.createElement('span');b.className='item-badge';
+    b.innerHTML='⏱<span class="count">×'+timeCount+'</span>';
+    disp.appendChild(b);
+  }
+  panel.style.display=(shieldCount>0||timeCount>0)?'':'none';
+}
+
+
+// ═══════════════════════════════════════════════
+//  SHIELD HANDLER
+// ═══════════════════════════════════════════════
+function tryUseShield(planet){
+  if((G.shields||0)<=0) return false;
+  G.shields--;
+  showToast('🛡️ 방어막 발동!','success');
+  G.ship.landed=false; G.ship.landedPlanet=null;
+  G.ship.exploding=false;
+  G.ship.ignorePlanets=[]; // 곁 행성 무시 목록은 무적시간 동안 자동 등록됨
+  G.ship.noCollideTimer=90; // 잠깐 충돌 무시(곧바로 다시 안 부딪히게)
+  if(planet){
+    // 충돌 속도는 흡수하고, 행성 바깥쪽으로 '부드럽게'만 밀어냄(과속 튕김 X → 감속 연료 절약)
+    const ang=Math.atan2(G.ship.wy-planet.wy, G.ship.wx-planet.wx);
+    const sp=0.35;
+    G.ship.vx=Math.cos(ang)*sp; G.ship.vy=Math.sin(ang)*sp;
+  } else {
+    G.ship.vx*=-0.3; G.ship.vy*=-0.3; // 살짝 반대로
+  }
+  return true;
+}
+
+// ═══════════════════════════════════════════════
+//  LANDING / GAME OVER
+// ═══════════════════════════════════════════════
+function onLanded(planet){
+  // 어떤 행성이든 착륙 허용. 목표 행성이면 착륙 미션 진행.
+  const lm=G.missions.land.find(m=>!m.done && G.planets[m.planetIdx]===planet);
+  const isTarget=!!lm;
+  if(G.mode==='game'){ // 튜토리얼에선 진행도/도감 기록 안 함
+    if(G.discovered) G.discovered.add(planet.data.name); // 행성은 착륙으로 도감 발견
+    saveCurrentProfile();
+  }
+  if(isTarget){
+    lm.done=true;
+    showToast(`✅ ${planet.data.name} 착륙 성공!`,'success');
+  } else {
+    showToast(`🛰 ${planet.data.name} 착륙`,'info');
+  }
+  // 판정: 모든 착륙 완료 시 — 과제(조사·쓰레기)도 완료면 클리어, 아니면 미션 실패(재시작)
+  const landAll=allLandDone();
+  const tasksAll=allTasksDone();
+  let outcome = !landAll ? 'continue' : (tasksAll ? 'clear' : 'fail');
+  setTimeout(()=>showPlanetCard(planet,outcome,isTarget),2500);
+}
+
+// 착륙한 행성에서 다시 발사 (다음 미션으로)
+function relaunchFromPlanet(planet){
+  G.ship.landed=false;G.ship.landedPlanet=null;
+  G.ship.ignorePlanets=[]; // 곁 행성 무시 목록은 무적시간 동안 자동 등록됨
+  G.ship.noCollideTimer=150; // ~2.5s 무적 — 이륙 직후 가까운 행성(이웃 포함) 충돌 방지
+  const ang=Math.atan2(G.ship.wy-planet.wy,G.ship.wx-planet.wx);
+  G.ship.vx=Math.cos(ang)*0.8;G.ship.vy=Math.sin(ang)*0.8;
+}
+
+// 행성 정보 카드 (착륙 시) — 착륙 상태라 타이머는 멈춰 있음. outcome: 'clear'|'fail'|'continue'
+function showPlanetCard(planet,outcome,isTarget){
+  const info=PLANET_INFO[planet.data.name];
+  const orb=document.getElementById('pi-orb');
+  orb.style.background=`radial-gradient(circle at 35% 35%, #ffffffcc, ${planet.data.color} 55%, ${planet.data.color}66)`;
+  document.getElementById('pi-name').textContent=`${planet.data.name} (${planet.data.en})`;
+  document.getElementById('pi-tagline').textContent=info?info.tagline:'';
+  // 착륙 이분법 — 별점 표시 없음(별은 스테이지 추진효율로 결과화면에서)
+  const starEl=document.getElementById('pi-stars');
+  if(starEl) starEl.style.display='none';
+  const fc=document.getElementById('pi-facts');fc.innerHTML='';
+  if(info) info.facts.forEach(f=>{const d=document.createElement('div');d.className='pi-fact';d.textContent=f;fc.appendChild(d);});
+  // 목표 안내
+  const noteEl=document.getElementById('pi-note');
+  const btn=document.getElementById('btn-pi-continue');
+  const exploreBtn=document.getElementById('btn-pi-explore');
+  if(exploreBtn) exploreBtn.classList.add('hidden'); // 자유탐험 제거
+  if(outcome==='clear'){
+    noteEl.textContent = G.mode==='tutorial' ? '🎉 잘했어요! 착륙 성공!' : '🏆 스테이지의 모든 목표를 완료했어요!';
+    btn.textContent = G.mode==='tutorial' ? '완료! 🎉' : '클리어! 🏆';
+    btn.onclick=()=>{ hideAllOverlays(); onStageComplete(); };
+  } else if(outcome==='fail'){
+    // 메인 착륙은 했지만 과제(조사·쓰레기) 미완 → 미션 실패, 재시작(별점은 도감에 남음)
+    const remain=missionEntries().filter(e=>!e.done).map(e=>e.label).join(' · ');
+    noteEl.innerHTML=`❌ 미션 실패! 남은 과제를 못 했어요.<br><span style="color:#ff9">${remain}</span><br><span style="font-size:11px;color:rgba(255,255,255,.55)">착륙 별점은 도감에 저장됐어요. 처음부터 다시!</span>`;
+    btn.textContent='↻ 미션 재시작';
+    btn.onclick=()=>{ hideAllOverlays(); restartCurrent(); };
+  } else {
+    // 아직 착륙할 행성/과제가 남음 → 이륙해서 계속
+    const rec=recTargetPos(nextRecTarget());
+    noteEl.textContent = rec ? (isTarget?`✅ 착륙 성공! · 다음 추천: ${rec.name}`:`🎯 다음 추천: ${rec.name}`)
+                             : (G.missions.collect.need>0?`♻️ 남은 쓰레기를 마저 치우세요 (${G.missions.collect.got}/${G.missions.collect.need})`:'계속 진행하세요');
+    btn.textContent = isTarget ? '다음 목표로 →' : '🚀 이륙 →';
+    btn.onclick=()=>{ hideAllOverlays(); relaunchFromPlanet(planet); };
+  }
+  showOverlay('ov-planet-info');
+}
+
+// 태양계 8개 정복 완료 → 엔딩
+function showEnding(){
+  G.timerOn=false;
+  G.paused=false;
+  saveCurrentProfile();
+  document.getElementById('btn-pause').classList.add('hidden');
+  // 정복한 행성들을 컬러 점으로 나열(축하)
+  const row=document.getElementById('ending-planets');row.innerHTML='';
+  CAMPAIGN_ORDER.forEach(name=>{
+    const pd=PLANET_DATA.find(d=>d.name===name);
+    const wrap=document.createElement('div');wrap.className='ending-planet';
+    const dot=document.createElement('div');dot.className='dot';
+    dot.style.background=`radial-gradient(circle at 35% 35%, #ffffffcc, ${pd.color} 60%, ${pd.color}88)`;
+    const nm=document.createElement('div');nm.className='nm';nm.textContent=name;
+    wrap.appendChild(dot);wrap.appendChild(nm);row.appendChild(wrap);
+  });
+  document.getElementById('ending-final').innerHTML=finalScoreBoxHTML();
+  document.getElementById('ending-stats').innerHTML=`🪐 정복한 행성 ${CAMPAIGN_ORDER.length}/${CAMPAIGN_ORDER.length} · 📖 도감 ${codexCount()}/${CODEX_ENTRIES.length}`;
+  document.getElementById('btn-ending-menu').onclick=openHub;
+  document.getElementById('btn-ending-ranking').onclick=()=>openRanking('ov-ending');
+  showOverlay('ov-ending');
+}
+
+// ═══════════════════════════════════════════════
+//  HUB (태양계 지도 / 레벨 셀렉트)
+// ═══════════════════════════════════════════════
+function openHub(){
+  saveCurrentProfile();
+  G.mode='hub'; G.ship=null; G.timerOn=false; G.paused=false; G.hiddenTarget=null;
+  G.cameraFollowShip=true;
+  document.getElementById('btn-pause').classList.add('hidden');
+  document.getElementById('btn-return-ship').style.display='none';
+  hideCoach();
+  initPlanets();
+  renderHub();
+  showOverlay('ov-hub');
+}
+// 허브 타일 썸네일: 행성 본체+디테일을 작은 캔버스에 그림(게임과 같은 그림)
+// 오버레이가 화면에 보이고(타일이 DOM에 붙은) 뒤 그려야 paint가 됨 → 다음 프레임으로 지연
+function renderPlanetThumb(cv, data){
+  if(!cv) return;
+  requestAnimationFrame(()=>{
+    const gc=cv.getContext('2d'); const s=cv.width;
+    gc.clearRect(0,0,s,s);
+    const r = data.ring? s*0.22 : (data.en==='Uranus'? s*0.30 : s*0.36);
+    drawPlanetGlobe(gc, data, s/2, s/2, r, s, s);
+  });
+}
+function renderHub(){
+  if(!G.clearedStages) G.clearedStages=new Set();
+  const cleared=G.clearedStages.size;
+  document.getElementById('hub-summary').innerHTML=
+    `🪐 정복 ${cleared}/8 · ⭐ ${starsSum(G.stageStars)} · 📖 도감 ${codexCount()}/${CODEX_ENTRIES.length} · ♻️ ${G.debrisCleaned||0}<br>🌌 최종점수 ${liveFinalScore().toLocaleString()} · 💰 보유 ${G.shopPoints}P`;
+  const grid=document.getElementById('hub-grid'); grid.innerHTML='';
+  STAGES.forEach((st,i)=>{
+    const unlocked=stageUnlocked(i);
+    const done=G.clearedStages.has(i);
+    const pd=PLANET_DATA.find(d=>d.name===st.name);
+    const stars=(G.stageStars&&G.stageStars[i])||0; // 별 = 추진효율 등급
+    const tile=document.createElement('div');
+    tile.className='hub-tile'+(unlocked?'':' locked')+(done?' done':'');
+    const best=(G.effScore&&G.effScore[i])||0; // 미션별 최고점수(들어가기 전 목표치)
+    tile.innerHTML=
+      `<canvas class="hub-dot" width="72" height="72"></canvas>`
+      +`<div class="hub-num">STAGE ${i+1}</div>`
+      +`<div class="hub-name">${unlocked?st.name:'🔒'}</div>`
+      +`<div class="hub-stars">${done?`<span style="color:#ffd24a">${'★'.repeat(stars)}</span><span style="color:rgba(255,255,255,.2)">${'★'.repeat(3-stars)}</span>`:(unlocked?'▶ 도전!':'')}</div>`
+      +`<div class="hub-best">${best?`🏆 최고 ${best}점`:(unlocked?'기록 없음':'')}</div>`;
+    renderPlanetThumb(tile.querySelector('canvas.hub-dot'), pd);
+    if(unlocked) tile.onclick=()=>{ hideAllOverlays(); startStage(i); };
+    grid.appendChild(tile);
+  });
+  // 히든 미션(8 클리어 후 등장)
+  const hwrap=document.getElementById('hub-hidden');
+  const hlabel=document.getElementById('hub-hidden-label');
+  if(allStagesCleared()){
+    hwrap.style.display=''; hlabel.style.display='';
+    hwrap.innerHTML='';
+    HIDDEN_MISSIONS.forEach((h,i)=>{
+      const doneH=G.hiddenDone&&G.hiddenDone.has(i);
+      const hstars=(G.stageStars&&G.stageStars['H'+i])||0; // 히든도 별(연료비율 기준) — 반복 도전해 갱신
+      const pd=PLANET_DATA.find(d=>d.name===h.name)||{color:'#cda6ff'};
+      const eb=EXTRA_BODIES.find(b=>b.name===h.name);
+      const col=eb?eb.color:'#cda6ff';
+      const tile=document.createElement('div');
+      tile.className='hub-tile hidden-tile'+(doneH?' done':'');
+      tile.innerHTML=
+        `<canvas class="hub-dot" width="72" height="72"></canvas>`
+        +`<div class="hub-num">✨ 히든</div><div class="hub-name">${h.name}</div>`
+        +`<div class="hub-stars">${doneH?`<span style="color:#ffd24a">${'★'.repeat(hstars)}</span><span style="color:rgba(255,255,255,.2)">${'★'.repeat(3-hstars)}</span>`:'⛽ 연료 갈틀릿'}</div>`;
+      renderPlanetThumb(tile.querySelector('canvas.hub-dot'), {color:col, en:''});
+      tile.onclick=()=>{ hideAllOverlays(); startHiddenMission(i); }; // 완료해도 별 갱신 위해 재도전 가능
+      hwrap.appendChild(tile);
+    });
+  } else { hwrap.style.display='none'; hlabel.style.display='none'; }
+}
+
+// 연료효율: 착륙 시 남은 연료 비율(시작연료 대비). 거리에 맞게 시작연료가 정해져 있어 자동 보정됨.
+// 연료템을 더 먹어 시작연료를 넘기면 1.0으로 캡(아껴쓴 보상). 거리·연료 trade-off가 여기서 공정하게 반영.
+function stageEfficiency(){ return G.startFuel? Math.min(1, Math.max(0, G.fuel/G.startFuel)) : 0; }
+function recordEffScore(idx){
+  const eff=stageEfficiency();
+  const pts=Math.round(EFF_BASE*eff);
+  const tier=effStarTier(eff);
+  // 별(효율 등급)은 일반·히든 모두 기록(갱신). 별은 '수집'용이라 최종점수엔 합산 안 함.
+  if(!G.stageStars) G.stageStars={};
+  G.stageStars[idx]=Math.max(G.stageStars[idx]||0, tier);
+  // 미션별 최고점수는 일반 스테이지(숫자 키)만 기록 → 최종점수 합산 대상. 히든은 별만.
+  if(typeof idx==='number'){
+    if(!G.effScore) G.effScore={};
+    G.effScore[idx]=Math.max(G.effScore[idx]||0, pts);
+  }
+  return {eff, pts, tier};
+}
+
+function onStageComplete(){
+  G.timerOn=false;
+  AudioFX.play('clear');
+  const ber=document.getElementById('btn-end-round'); if(ber) ber.classList.add('hidden');
+  hideCoach();
+  document.getElementById('result-title').textContent=G.mode==='tutorial'?'튜토리얼 완료! 🎉':'스테이지 클리어! 🏆';
+  let firstFull=false;
+  if(G.mode==='game'){
+    const idx=G.stageIdx;
+    if(!G.clearedStages) G.clearedStages=new Set();
+    const wasAll=allStagesCleared();
+    G.clearedStages.add(idx);
+    firstFull=!wasAll && allStagesCleared(); // 이번에 처음으로 8개 완주
+    const clearBonus=15+idx*5; G.shopPoints+=clearBonus; // 어려운(뒤) 스테이지일수록 보상↑. 초반은 낮게(내비는 쓰레기로)
+    const {eff,pts,tier}=recordEffScore(idx);
+    saveCurrentProfile();
+    const starBig=`<span style="color:#ffd24a">${'★'.repeat(tier)}</span><span style="color:rgba(255,255,255,.22)">${'★'.repeat(3-tier)}</span>`;
+    const fs=liveFinalScore(), cx=codexScore(G.discovered), es=effScoreSum(G.effScore), cl=(G.debrisCleaned||0)*CLEANUP_PER;
+    // 기본(단순): 별 + 코인 + 점수만 크게
+    document.getElementById('result-score').innerHTML=
+      `<div style="font-size:36px;letter-spacing:5px;line-height:1.1;margin:2px 0">${starBig}</div>`
+      +`<div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:14px">별 = 연료 솜씨 · 연료 많이 남길수록 ⭐↑</div>`
+      +`<div style="display:flex;justify-content:center;gap:28px;font-family:'Orbitron',monospace;font-size:12px;color:rgba(255,255,255,.8)">`
+        +`<div>💰 코인<br><b style="color:#ffd24a;font-size:22px">${G.shopPoints}</b> <span style="color:#7de888;font-size:12px">+${clearBonus}</span></div>`
+        +`<div>🏆 점수<br><b style="color:#4fc3f7;font-size:22px">${fs.toLocaleString()}</b></div>`
+      +`</div>`;
+    // 자세히(펼치면): 항목별 줄 나눔
+    document.getElementById('result-final').innerHTML=
+      `<div style="text-align:center"><button class="btn btn-ghost" id="res-detail-toggle" style="display:inline-block;font-size:12px;padding:6px 16px;margin:10px 0 0">▸ 점수 자세히 보기</button></div>`
+      +`<div id="res-detail-box" class="hidden" style="text-align:left;background:rgba(255,255,255,.04);border-radius:12px;padding:12px 14px;margin-top:10px;font-size:13px;line-height:1.9">`
+        +`<div style="font-weight:700;color:#4fc3f7;margin-bottom:4px">🏆 점수 ${fs.toLocaleString()}</div>`
+        +`<div>📖 도감 <b>${cx}</b> <span style="color:rgba(255,255,255,.45);font-size:11px">행성·천체 발견</span></div>`
+        +`<div>🚀 연료효율 <b>${es}</b> <span style="color:rgba(255,255,255,.45);font-size:11px">연료 ${(eff*100).toFixed(0)}% 남김 ${starBig}</span></div>`
+        +`<div>♻️ 청소 <b>${cl}</b> <span style="color:rgba(255,255,255,.45);font-size:11px">쓰레기 ${G.debrisCleaned||0}개 치움</span></div>`
+        +`<div style="border-top:1px solid rgba(255,255,255,.12);margin:8px 0 4px;padding-top:6px;font-weight:700;color:#ffd24a">💰 코인 ${G.shopPoints}</div>`
+        +`<div>미션 클리어 보상 <b style="color:#7de888">+${clearBonus}</b></div>`
+        +`<div style="color:rgba(255,255,255,.45);font-size:11px">♻️ 쓰레기를 치우면 코인이 더 모여요</div>`
+      +`</div>`;
+    document.getElementById('result-detail').innerHTML=`<div style="font-size:11px;color:rgba(255,255,255,.45);margin-top:8px">🪐 정복 ${G.clearedStages.size}/8</div>`;
+  } else {
+    G.tutorialDone=true;
+    document.getElementById('result-score').textContent='';
+    document.getElementById('result-final').innerHTML='';
+    document.getElementById('result-detail').innerHTML='착륙의 기본을 익혔어요! 이제 태양계로 떠나요 🚀';
+  }
+  const btn=document.getElementById('btn-next');
+  if(firstFull){
+    btn.textContent='🏆 태양계 정복!';
+    btn.onclick=()=>{hideAllOverlays(); showEnding();};
+  } else {
+    btn.textContent='🗺 태양계 지도로';
+    btn.onclick=()=>{hideAllOverlays(); openHub();};
+  }
+  const shopBtn=document.getElementById('btn-go-shop');
+  shopBtn.style.display=(G.mode==='tutorial'?'none':'');
+  showOverlay('ov-result');
+  // "점수 자세히 보기" 펼치기 토글
+  const _tgl=document.getElementById('res-detail-toggle');
+  if(_tgl) _tgl.onclick=()=>{ const box=document.getElementById('res-detail-box'); if(!box) return; const nowHidden=box.classList.toggle('hidden'); _tgl.textContent=(nowHidden?'▸':'▾')+' 점수 자세히 보기'; };
+  shopBtn.onclick=()=>{
+    G._shopReturn='hub';
+    document.getElementById('btn-shop-close').textContent='태양계 지도로';
+    renderShop();
+    showOverlay('ov-shop');
+  };
+}
+
+function onGameOver(timeout,outOfFuel){
+  G.timerOn=false;
+  AudioFX.stopExplosion(); // 파괴 카드 뜰 때 폭발 효과음이 길게 이어지지 않게 끊기
+  G.cameraFollowShip=true; document.getElementById('btn-return-ship').style.display='none';
+  document.getElementById('result-title').textContent=
+    outOfFuel?'⛽ 연료 소진!':timeout?'⏱ 시간 초과!':'💥 우주선 파괴!';
+  // 터지면 0 — 점수·돈 보상 없음. 단 착륙 별점·도감은 이미 저장됨.
+  // 어차피 다시 시도해야 하므로 코인·최종점수는 표시하지 않는다(클리어 카드와 달리 간결하게).
+  if(G.mode==='game') saveCurrentProfile();
+  document.getElementById('result-final').innerHTML='';
+  document.getElementById('result-score').textContent='';
+  const done=missionEntries().filter(e=>e.done).length, total=missionTotal();
+  document.getElementById('result-detail').innerHTML=
+    (outOfFuel?'연료가 모두 바닥났어요.':
+     timeout?'시간 안에 목표를 끝내지 못했어요.':'행성에 너무 빠르게 충돌했어요.')+
+    `<br><br>완료한 과제: ${done}/${total}<br><span style="font-size:11px;color:rgba(255,255,255,.55)">⭐ 착륙 별점은 도감에 남아요. 다시 도전!</span>`;
+  const btn=document.getElementById('btn-next');
+  btn.textContent='↻ 다시 시도';
+  btn.onclick=()=>{ hideAllOverlays(); restartCurrent(); };
+  const shopBtn2=document.getElementById('btn-go-shop');
+  shopBtn2.style.display=(G.mode==='tutorial'?'none':'');
+  showOverlay('ov-result');
+  shopBtn2.onclick=()=>{
+    G._shopReturn='retry';
+    document.getElementById('btn-shop-close').textContent='다시 시도';
+    renderShop();
+    showOverlay('ov-shop');
+  };
+}
+
+// ═══════════════════════════════════════════════
+//  OVERLAY HELPERS
+// ═══════════════════════════════════════════════
+function showOverlay(id){
+  document.querySelectorAll('.overlay').forEach(o=>o.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+function hideAllOverlays(){
+  document.querySelectorAll('.overlay').forEach(o=>o.classList.add('hidden'));
+}
+
+// ═══════════════════════════════════════════════
+//  INPUT
+// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  INPUT — continuous thrust while dragging
+// ═══════════════════════════════════════════════
+canvas.addEventListener('mousedown',e=>onDown(e.clientX,e.clientY));
+canvas.addEventListener('mousemove',e=>onMove(e.clientX,e.clientY));
+canvas.addEventListener('mouseup',e=>onUp());
+canvas.addEventListener('mouseleave',()=>onUp());
+canvas.addEventListener('touchstart',e=>{e.preventDefault();
+  if(e.touches.length===2){pinchStart(e);return;}
+  const t=e.touches[0];onDown(t.clientX,t.clientY);},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();
+  if(e.touches.length===2){pinchMove(e);return;}
+  const t=e.touches[0];onMove(t.clientX,t.clientY);},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();
+  if(e.touches.length<2) onUp();},{passive:false});
+
+// Mouse wheel zoom
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor=e.deltaY<0?1.12:0.89;
+  G.zoom=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,G.zoom*factor));
+},{passive:false});
+
+// Pinch zoom
+let _pinchDist0=0;
+let _pinchZoom0=1;
+function pinchStart(e){
+  const a=e.touches[0],b=e.touches[1];
+  _pinchDist0=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+  _pinchZoom0=G.zoom;
+  onUp(); // cancel any drag
+}
+function pinchMove(e){
+  const a=e.touches[0],b=e.touches[1];
+  const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+  G.zoom=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,_pinchZoom0*(d/_pinchDist0)));
+}
+
+// pan(browse) mode drag state — single-finger drag moves the camera instead of thrusting
+let _panning=false,_panLX=0,_panLY=0;
+function onDown(cx,cy){
+  if(!G.ship) return;
+  if(!G.cameraFollowShip){ _panning=true;_panLX=cx;_panLY=cy; return; } // browse mode → pan
+  if(G.ship.exploding||G.ship.landed) return;
+  G.ship.selected=true;
+  G.ship.dragActive=false;
+  G.ship.dragSX=cx;G.ship.dragSY=cy;
+  G.ship.dragEX=cx;G.ship.dragEY=cy;
+}
+function onMove(cx,cy){
+  if(!G.cameraFollowShip){ // browse mode → pan camera by drag delta
+    if(_panning){ G.camX+=(cx-_panLX);G.camY+=(cy-_panLY);_panLX=cx;_panLY=cy; }
+    return;
+  }
+  if(!G.ship||!G.ship.selected) return;
+  G.ship.dragActive=true;
+  G.ship.dragEX=cx;G.ship.dragEY=cy;
+}
+function onUp(){
+  _panning=false;
+  if(!G.ship) return;
+  G.ship.selected=false;
+  G.ship.dragActive=false;
+}
+
+// ── browse(pan) mode helpers ──
+function enterPanMode(){
+  if(!G.cameraFollowShip) return;
+  G.cameraFollowShip=false;
+  onUp(); // cancel any in-progress thrust drag
+  const b=document.getElementById('btn-return-ship');
+  if(b) b.style.display='flex';
+  showToast('둘러보기 모드<br>드래그로 이동<br>휠/핀치로 줌','info');
+}
+function returnToShip(){
+  G.cameraFollowShip=true;
+  G.zoom=AUTO_ZOOM; // raise above threshold so camera re-follows (and won't re-trigger pan)
+  _panning=false;
+  const b=document.getElementById('btn-return-ship');
+  if(b) b.style.display='none';
+}
+
+// Called every frame — applies thrust continuously while drag held
+function applyDragThrust(dt){
+  const ship=G.ship;
+  if(!ship||!ship.selected||!ship.dragActive||ship.landed||ship.exploding) return;
+  if(G.fuel<=0){showToast('연료 없음!','danger');return;}
+  let dx=ship.dragEX-ship.dragSX, dy=ship.dragEY-ship.dragSY;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist<4) return; // dead zone
+  const cr=ship.controlR;
+  const clamped=Math.min(dist,cr);
+  dx=dx/dist*clamped; dy=dy/dist*clamped;
+  const fx=dx/cr, fy=dy/cr;
+  const mag=Math.sqrt(fx*fx+fy*fy);
+  // thrust fuel cost: on top of passive life-support drain
+  G.fuel=Math.max(0,G.fuel-mag*0.018*dt);
+  // continuous thrust: weaker per-frame force (divide by ~60fps feel)
+  ship.applyThrustContinuous(fx,fy,dt);
+  G.thrustFrames=(G.thrustFrames||0)+dt; // 추진효율 측정: 분사한 시간 누적
+}
+
+// ═══════════════════════════════════════════════
+//  CAMERA
+// ═══════════════════════════════════════════════
+function updateCamera(dt){
+  if(!G.ship) return;
+  // zoomed far out → release camera from the ship into free browse mode
+  if(G.cameraFollowShip && G.zoom < PAN_ZOOM_THRESHOLD){ enterPanMode(); }
+  if(!G.cameraFollowShip) return; // browse mode: camera stays where the user dragged it
+  G.camTargetX=-G.ship.wx*G.zoom;
+  G.camTargetY=-G.ship.wy*G.zoom;
+  G.camX+=(G.camTargetX-G.camX)*0.06;
+  G.camY+=(G.camTargetY-G.camY)*0.06;
+}
+
+// ═══════════════════════════════════════════════
+//  DRAW
+// ═══════════════════════════════════════════════
+function drawBackground(){
+  ctx.fillStyle='#03030a';ctx.fillRect(0,0,W,H);
+  // stars (parallax) — star coords are screen-space tile offsets (0..tileW/tileH),
+  // so modulo always wraps across the full visible screen regardless of W/H or zoom.
+  const t=Date.now()*0.001;
+  const tileW=Math.max(W,800), tileH=Math.max(H,800);
+  for(const s of G.bgStars){
+    const sx=((G.camX*0.08+s.x*tileW)%tileW+tileW)%tileW;
+    const sy=((G.camY*0.08+s.y*tileH)%tileH+tileH)%tileH;
+    const a=s.a*(0.7+0.3*Math.sin(t/s.flicker+s.phase));
+    ctx.globalAlpha=a;
+    ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);
+    ctx.fillStyle='#fff';ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawSun(){
+  const sx=CX+G.camX, sy=CY+G.camY;
+  const r=80*G.zoom;
+  const t=Date.now()*0.001;
+  // ── 웅장한 코로나(여러 겹, 은은한 펄스) ──
+  const pulse=Math.sin(t*0.8)*0.08+0.92;
+  const halo=ctx.createRadialGradient(sx,sy,r*0.8,sx,sy,r*5.5);
+  halo.addColorStop(0,'rgba(255,180,40,0.28)');
+  halo.addColorStop(0.4,'rgba(255,120,0,0.12)');
+  halo.addColorStop(1,'transparent');
+  ctx.beginPath();ctx.arc(sx,sy,r*5.5*pulse,0,Math.PI*2);ctx.fillStyle=halo;ctx.fill();
+  const halo2=ctx.createRadialGradient(sx,sy,r*0.5,sx,sy,r*2.4);
+  halo2.addColorStop(0,'rgba(255,240,180,0.55)');
+  halo2.addColorStop(0.5,'rgba(255,190,70,0.22)');
+  halo2.addColorStop(1,'transparent');
+  ctx.beginPath();ctx.arc(sx,sy,r*2.4,0,Math.PI*2);ctx.fillStyle=halo2;ctx.fill();
+  ctx.save();
+  ctx.translate(sx,sy);
+  // ── 본체: 흰빛 코어 → 노랑 → 주황(밝고 웅장) ──
+  const body=ctx.createRadialGradient(-r*.25,-r*.25,r*0.05,0,0,r);
+  body.addColorStop(0,'#fffdf0');
+  body.addColorStop(0.35,'#ffe680');
+  body.addColorStop(0.7,'#ffc222');
+  body.addColorStop(1,'#ff8a10');
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fillStyle=body;ctx.fill();
+  // ── 표면 대류 무늬 + 부드러운 흑점(원판 클립, 천천히 흐름) ──
+  ctx.save();
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.clip();
+  ctx.rotate(t*0.04);
+  for(let i=0;i<7;i++){                                  // 밝은 과립
+    const a=i*1.7+t*0.2, rad=r*(0.2+0.6*((i*0.37)%1));
+    const gx=Math.cos(a)*rad, gy=Math.sin(a)*rad, gr=r*(0.18+0.1*((i*0.53)%1));
+    const gg=ctx.createRadialGradient(gx,gy,0,gx,gy,gr);
+    gg.addColorStop(0,'rgba(255,250,210,0.35)');gg.addColorStop(1,'transparent');
+    ctx.beginPath();ctx.arc(gx,gy,gr,0,Math.PI*2);ctx.fillStyle=gg;ctx.fill();
+  }
+  const spots=[[-0.3,-0.18,0.20],[0.22,0.26,0.15]];     // 부드러운 흑점
+  for(const sp of spots){
+    const ex=sp[0]*r,ey=sp[1]*r,pr=sp[2]*r;
+    const sg=ctx.createRadialGradient(ex,ey,0,ex,ey,pr);
+    sg.addColorStop(0,'rgba(120,50,0,0.5)');
+    sg.addColorStop(0.5,'rgba(170,80,10,0.28)');
+    sg.addColorStop(1,'transparent');
+    ctx.beginPath();ctx.arc(ex,ey,pr,0,Math.PI*2);ctx.fillStyle=sg;ctx.fill();
+  }
+  ctx.restore();
+  // 좌상단 광휘
+  const rimH=ctx.createRadialGradient(-r*.35,-r*.35,0,-r*.35,-r*.35,r*0.9);
+  rimH.addColorStop(0,'rgba(255,255,255,0.4)');rimH.addColorStop(0.5,'transparent');
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fillStyle=rimH;ctx.fill();
+  // ── 일렁이는 불꽃 가장자리(채층): 딱딱한 원 경계를 꿈틀거리는 불꽃으로 덮어 흐리게 ──
+  const seg=140;
+  const noise=(a,sp)=>Math.sin(a*7+t*3*sp)*0.5+Math.sin(a*13-t*2*sp)*0.3+Math.sin(a*23+t*5*sp)*0.2; // -1..1
+  const drawFringe=(amp,inner,color,sp)=>{
+    ctx.beginPath();
+    for(let i=0;i<=seg;i++){const a=i/seg*Math.PI*2;const n=0.5+0.5*noise(a,sp);const rad=r*(1.0+amp*n);ctx.lineTo(Math.cos(a)*rad,Math.sin(a)*rad);}
+    for(let i=seg;i>=0;i--){const a=i/seg*Math.PI*2;ctx.lineTo(Math.cos(a)*r*inner,Math.sin(a)*r*inner);}
+    ctx.closePath();ctx.fillStyle=color;ctx.fill();
+  };
+  drawFringe(0.20,0.86,'rgba(255,100,0,0.5)',1.0);    // 겉(진한 주황, 큰 일렁임)
+  drawFringe(0.12,0.90,'rgba(255,170,40,0.6)',1.4);   // 속(밝은)
+  drawFringe(0.06,0.93,'rgba(255,225,140,0.55)',1.9); // 가장 안쪽 밝은 띠
+  // ── 가끔씩 여기저기서 터지는 플레어(시간차 분출) ──
+  const NB=8;
+  for(let i=0;i<NB;i++){
+    const seed=i*2.3994;
+    const env=Math.pow(Math.max(0,Math.sin(t*0.6+seed)),5); // 대부분 0, 가끔 솟구침
+    if(env<0.03) continue;
+    const ang=seed*1.7+Math.sin(t*0.2+i)*0.1;
+    const h=r*(0.16+0.55*env), w=r*0.12*(0.7+0.5*env), sway=Math.sin(t*3+i)*w*0.5;
+    ctx.save();
+    ctx.rotate(ang);
+    const fg=ctx.createLinearGradient(0,-r,0,-r-h*1.1); // 겉불꽃
+    fg.addColorStop(0,'rgba(255,120,0,0)');
+    fg.addColorStop(0.2,'rgba(255,110,0,'+(0.75*env).toFixed(3)+')');
+    fg.addColorStop(1,'rgba(255,60,0,0)');
+    ctx.beginPath();
+    ctx.moveTo(-w,-r+2);
+    ctx.quadraticCurveTo(-w*0.5,-r-h,sway,-r-h*1.1);
+    ctx.quadraticCurveTo(w*0.5,-r-h,w,-r+2);
+    ctx.closePath();ctx.fillStyle=fg;ctx.fill();
+    const fg2=ctx.createLinearGradient(0,-r,0,-r-h*0.8); // 속불꽃(밝은)
+    fg2.addColorStop(0,'rgba(255,240,160,0)');
+    fg2.addColorStop(0.3,'rgba(255,228,120,'+(0.9*env).toFixed(3)+')');
+    fg2.addColorStop(1,'rgba(255,180,40,0)');
+    ctx.beginPath();
+    ctx.moveTo(-w*0.5,-r+2);
+    ctx.quadraticCurveTo(-w*0.25,-r-h*0.7,sway*0.6,-r-h*0.82);
+    ctx.quadraticCurveTo(w*0.25,-r-h*0.7,w*0.5,-r+2);
+    ctx.closePath();ctx.fillStyle=fg2;ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawOrbits(){
+  for(const pl of G.planets){
+    if(!pl.data.orbitR) continue;
+    const cx2=CX+G.camX, cy2=CY+G.camY;
+    ctx.beginPath();ctx.arc(cx2,cy2,pl.data.orbitR*G.zoom,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;ctx.stroke();
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  MAIN LOOP
+// ═══════════════════════════════════════════════
+let last=0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  const dt=Math.min((ts-last)/16.67,3);last=ts;
+  if(G.mode==='title'){
+    drawBackground();drawSun();drawOrbits();
+    for(const pl of G.planets){pl.update(dt);if(pl.data.orbitR)pl.draw();}
+    return;
+  }
+  if(G.paused){
+    drawBackground();drawSun();drawOrbits();
+    drawExtraBodies();
+    drawFuelItems();
+    drawDebris();
+    for(const pl of G.planets) if(pl.data.orbitR) pl.draw();
+    drawParticles();
+    if(G.ship) G.ship.draw();
+    updateHUD();
+    return;
+  }
+  // browse(pan) mode: ship frozen — skip timer/fuel/physics, but keep camera+draw live
+  const browsing = G.ship && !G.cameraFollowShip;
+  if(!browsing){
+    // timer
+    if(G.timerOn&&G.ship&&!G.ship.exploding&&!G.ship.landed){
+      G.timeLeft=Math.max(0,G.timeLeft-dt*0.016*16.67/1000*60*0.5);
+      if(G.timeLeft<=0&&G.timerOn){G.timerOn=false;onGameOver(true);}
+    }
+    G.gameTime+=dt;
+    // passive life-support fuel drain (slow, always-on while flying)
+    if(G.ship&&!G.ship.landed&&!G.ship.exploding){
+      G.fuel=Math.max(0,G.fuel-0.0025*dt);
+      if((G.mode==='game'||G.mode==='hidden')&&G.timerOn) G.flightFrames=(G.flightFrames||0)+dt; // 추진효율 분모(비행시간)
+    }
+    // update
+    for(const pl of G.planets) pl.update(dt);
+    updateExtraBodies(dt);
+    updateDebris(dt);
+    checkDiscoveries();
+    checkMissionProgress();
+    checkBoundary();
+    if(G.hiddenTarget) checkHiddenMissionProgress();
+    applyDragThrust(dt);
+    if(G.ship) G.ship.update(dt);
+    if(G.mode==='tutorial') tutTick();
+    updateParticles(dt);
+  }
+  updateCamera(dt);
+  updateConsumableBtns();
+  updateItemBadges();
+  // fuel depletion ends the game
+  if(!browsing&&G.timerOn&&G.fuel<=0&&G.ship&&!G.ship.landed&&!G.ship.exploding){
+    G.timerOn=false;
+    onGameOver(false,true);
+  }
+  // draw
+  drawBackground();drawSun();drawOrbits();
+  drawExtraBodies();
+  drawFuelItems();
+  drawDebris();
+  for(const pl of G.planets) if(pl.data.orbitR) pl.draw();
+  drawParticles();
+  if(G.ship) G.ship.draw();
+  drawMissionIndicator();
+  updateHUD();
+}
+requestAnimationFrame(loop);
+
+// ═══════════════════════════════════════════════
+//  BUTTON WIRING
+// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  PROFILES / SAVE (localStorage, 1단계: 같은 기기)
+// ═══════════════════════════════════════════════
+const PROFILES_KEY='gravity_profiles';
+function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PROFILES_KEY))||{}; }catch(e){ return {}; } }
+function saveProfiles(p){ try{ localStorage.setItem(PROFILES_KEY,JSON.stringify(p)); }catch(e){} }
+function saveCurrentProfile(){
+  if(!G.profileName) return;
+  const p=loadProfiles();
+  const prev=p[G.profileName]||{};
+  p[G.profileName]={
+    name:G.profileName,
+    discovered:[...(G.discovered||[])],
+    conquered:[...(G.conquered||[])],
+    stageStars:G.stageStars||{},
+    debrisCleaned:G.debrisCleaned||0,
+    shopPoints:G.shopPoints||0,
+    upgrades:G.upgrades||{},
+    consumables:G.consumables||{},
+    boughtShields:G.boughtShields||0,
+    clearedStages:[...(G.clearedStages||[])],
+    effScore:G.effScore||{},
+    hiddenDone:[...(G.hiddenDone||[])],
+    tutorialDone:!!G.tutorialDone,
+    gameRound:G.gameRound||0,
+    updated:Date.now(),
+  };
+  saveProfiles(p);
+}
+function applyProfile(prof){
+  G.profileName=prof.name;
+  G.discovered=new Set(prof.discovered||[]);
+  G.conquered=new Set(prof.conquered||[]);
+  G.stageStars=prof.stageStars||{};
+  G.debrisCleaned=prof.debrisCleaned||0;
+  G.shopPoints=prof.shopPoints||0;
+  G.upgrades=Object.assign({fuelTank:0,navigator:false,shipColor:null}, prof.upgrades||{});
+  G.consumables=Object.assign({shield:0,timeBonus:0}, prof.consumables||{});
+  G.boughtShields=prof.boughtShields||0;
+  G.clearedStages=new Set(prof.clearedStages||[]);
+  G.effScore=prof.effScore||{};
+  G.hiddenDone=new Set(prof.hiddenDone||[]);
+  G.tutorialDone=!!prof.tutorialDone;
+  G.gameRound=prof.gameRound||0;
+}
+function newProfileState(name){
+  G.profileName=name;
+  G.discovered=new Set(); G.conquered=new Set(); G.stageStars={}; G.debrisCleaned=0;
+  G.shopPoints=0;
+  G.upgrades={fuelTank:0,navigator:false,shipColor:null};
+  G.consumables={shield:0,timeBonus:0};
+  G.boughtShields=0;
+  G.clearedStages=new Set(); G.effScore={}; G.hiddenDone=new Set(); G.tutorialDone=false;
+  G.gameRound=0;
+  saveCurrentProfile();
+}
+
+function showConfirm(msg, onOk){
+  document.getElementById('confirm-msg').textContent=msg;
+  const ok=document.getElementById('btn-confirm-ok');
+  const cancel=document.getElementById('btn-confirm-cancel');
+  const cleanup=()=>{ ok.onclick=null; cancel.onclick=null; };
+  ok.onclick=()=>{ cleanup(); hideAllOverlays(); onOk(); };
+  cancel.onclick=()=>{ cleanup(); showOverlay('ov-title'); };
+  showOverlay('ov-confirm');
+}
+
+// 새 게임 시작 (튜토리얼 포함 여부)
+function startNewGame(withTutorial){
+  const raw=(document.getElementById('name-input').value||'').trim();
+  const name=raw||'player';
+  const profiles=loadProfiles();
+  if(profiles[name]){
+    if(raw){ // 직접 입력한 이름이 이미 있음 → 거부
+      showToast('이미 있는 이름이에요.<br>다른 이름을 정하거나 이어하기를 눌러주세요','danger'); return;
+    }
+    // 빈칸→player가 이미 있음: "새 게임"은 덮어쓰기 확인(이어하려면 취소→이어하기)
+    showConfirm("기존 'player' 기록을 지우고\n새로 시작할까요?", ()=>{
+      hideAllOverlays(); initPlanets();
+      newProfileState(name);
+      if(withTutorial) startTutorialStage(0); else openHub();
+    });
+    return;
+  }
+  hideAllOverlays(); initPlanets();
+  newProfileState(name);
+  if(withTutorial) startTutorialStage(0); else openHub();
+}
+function continueProfile(name){
+  const p=loadProfiles()[name]; if(!p) return;
+  applyProfile(p);
+  // 이어하기: 돈·아이템·연료통·네비게이터는 초기화(다시 모아야 함).
+  // 도감·별·클리어기록·최고점수·도색·히든완료 등 진행기록은 그대로 유지.
+  G.shopPoints=0;
+  G.consumables={shield:0,timeBonus:0};
+  G.boughtShields=0;
+  if(G.upgrades){ G.upgrades.fuelTank=0; G.upgrades.navigator=false; }
+  saveCurrentProfile();
+  hideAllOverlays(); initPlanets();
+  openHub(); // 이어하기 → 태양계 지도(허브)
+}
+function openProfiles(){ renderProfiles(); showOverlay('ov-profiles'); }
+function renderProfiles(){
+  const list=document.getElementById('profiles-list'); list.innerHTML='';
+  const profiles=loadProfiles();
+  const names=Object.keys(profiles).sort((a,b)=>(profiles[b].updated||0)-(profiles[a].updated||0));
+  if(!names.length){ list.innerHTML='<div class="profiles-empty">저장된 게임이 없어요.<br>새 게임을 시작해보세요!</div>'; return; }
+  for(const nm of names){
+    const pr=profiles[nm];
+    const row=document.createElement('div'); row.className='profile-row';
+    const info=document.createElement('div'); info.className='pinfo';
+    info.innerHTML=`<div class="pname">${nm}</div><div class="pmeta">🪐 정복 ${(pr.clearedStages||[]).length}/${STAGES.length} · 📖 도감 ${(pr.discovered||[]).length}/${CODEX_ENTRIES.length} · 🌌 최종 ${profileFinalScore(pr).toLocaleString()}</div>`;
+    info.onclick=()=>continueProfile(nm);
+    const del=document.createElement('button'); del.className='profile-del'; del.textContent='삭제';
+    del.onclick=(e)=>{ e.stopPropagation(); const p2=loadProfiles(); delete p2[nm]; saveProfiles(p2); renderProfiles(); };
+    row.appendChild(info); row.appendChild(del); list.appendChild(row);
+  }
+}
+// ── 로컬 랭킹(4c): 같은 기기 프로필을 최종점수순으로 ──
+let _rankingFrom='ov-title';
+function renderRanking(){
+  const list=document.getElementById('ranking-list'); list.innerHTML='';
+  const profiles=loadProfiles();
+  const rows=Object.values(profiles)
+    .map(pr=>({pr, score:profileFinalScore(pr)}))
+    .sort((a,b)=>b.score-a.score);
+  if(!rows.length){ list.innerHTML='<div class="ranking-empty">아직 기록이 없어요.<br>새 게임으로 첫 기록을 세워보세요!</div>'; return; }
+  rows.forEach((r,i)=>{
+    const pos=i+1;
+    const row=document.createElement('div'); row.className='rank-row'+(r.pr.name===G.profileName?' me':'');
+    const medal=pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':pos;
+    const posCls=pos<=3?` top${pos}`:'';
+    row.innerHTML=`<div class="rank-pos${posCls}">${medal}</div>`
+      +`<div class="rank-mid"><div class="rank-name">${r.pr.name}</div>`
+      +`<div class="rank-meta">🪐 ${(r.pr.clearedStages||[]).length}/${STAGES.length} · 📖 ${(r.pr.discovered||[]).length}/${CODEX_ENTRIES.length} · ⭐ ${starsSum(r.pr.stageStars||{})}</div></div>`
+      +`<div class="rank-score">${r.score.toLocaleString()}</div>`;
+    list.appendChild(row);
+  });
+}
+function openRanking(fromId){ _rankingFrom=fromId||'ov-title'; renderRanking(); showOverlay('ov-ranking'); }
+document.getElementById('btn-ranking-back').onclick=()=>showOverlay(_rankingFrom);
+document.getElementById('btn-title-ranking').onclick=()=>openRanking('ov-title');
+document.getElementById('btn-result-ranking').onclick=()=>openRanking('ov-result');
+
+document.getElementById('btn-newgame').onclick=()=>startNewGame(true);
+document.getElementById('btn-skip').onclick=()=>startNewGame(false);
+document.getElementById('btn-continue').onclick=openProfiles;
+document.getElementById('btn-profiles-back').onclick=()=>showOverlay('ov-title');
+// ── CINEMATIC INTRO ──
+function startCinematicIntro(onDone){
+  // 둘러보기 상태가 인트로로 새지 않게 초기화
+  G.cameraFollowShip=true;
+  document.getElementById('btn-return-ship').style.display='none';
+  // phases: [zoom, camWX, camWY, duration_ms]
+  // 1. 은하계 전체 줌아웃
+  // 2. 목표 행성으로 이동 & 줌인
+  // 3. 우주선으로 이동 & 최대 줌
+  // 4. 게임 배율로 정착
+  // 인트로는 스테이지 최종 목적지(마지막 착륙지)를 비춤
+  const landArr=G.missions&&G.missions.land;
+  const curM=(landArr&&landArr.length)?landArr[landArr.length-1]:null;
+  const targetPl=curM?G.planets[curM.planetIdx]:null;
+  const shipWX=G.ship?G.ship.wx:0, shipWY=G.ship?G.ship.wy:-500;
+  const plWX=targetPl?targetPl.wx:0, plWY=targetPl?targetPl.wy:0;
+
+  const phases=[
+    {zoom:0.13, wx:0,     wy:0,     dur:1400, ease:'inout'}, // 은하계 전체
+    {zoom:0.13, wx:0,     wy:0,     dur:600,  ease:'inout'}, // 잠깐 유지
+    {zoom:0.9,  wx:plWX,  wy:plWY,  dur:1600, ease:'inout'}, // 목표 행성
+    {zoom:0.9,  wx:plWX,  wy:plWY,  dur:700,  ease:'inout'}, // 잠깐 유지
+    {zoom:MAX_ZOOM, wx:shipWX, wy:shipWY, dur:1400, ease:'inout'}, // 우주선 클로즈업
+    {zoom:AUTO_ZOOM, wx:shipWX, wy:shipWY, dur:1000, ease:'inout'}, // 게임 배율 정착
+  ];
+
+  let phaseIdx=0;
+  let phaseStart=performance.now();
+  // 초기값
+  let fromZoom=G.zoom, fromWX=-G.camX/G.zoom, fromWY=-G.camY/G.zoom;
+
+  function easeInOut(t){ return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2; }
+
+  function tick(now){
+    if(phaseIdx>=phases.length){ onDone(); return; }
+    const ph=phases[phaseIdx];
+    const elapsed=now-phaseStart;
+    const t=Math.min(1,elapsed/ph.dur);
+    const et=easeInOut(t);
+
+    G.zoom=fromZoom+(ph.zoom-fromZoom)*et;
+    const cx=fromWX+(ph.wx-fromWX)*et;
+    const cy=fromWY+(ph.wy-fromWY)*et;
+    G.camTargetX=-cx*G.zoom;
+    G.camTargetY=-cy*G.zoom;
+    G.camX=G.camTargetX;
+    G.camY=G.camTargetY;
+
+    if(t>=1){
+      fromZoom=ph.zoom; fromWX=ph.wx; fromWY=ph.wy;
+      phaseIdx++; phaseStart=now;
+    }
+    if(phaseIdx<phases.length) requestAnimationFrame(tick);
+    else onDone();
+  }
+  requestAnimationFrame(tick);
+}
+
+document.getElementById('btn-go').onclick=()=>{
+  AudioFX.init(); AudioFX.startMusic(); // 배경음 시작(사용자 제스처)
+  hideAllOverlays();
+  document.getElementById('btn-pause').classList.remove('hidden'); // 게임플레이 시작 → 일시정지 버튼 표시
+  // 시네마틱 인트로 후 게임 시작
+  G.paused=true;
+  startCinematicIntro(()=>{
+    G.paused=false;
+  });
+};
+// init planets for title screen
+initPlanets();
+
+// Skip tutorial (go straight to hub) — 일시정지 메뉴에서 호출(튜토리얼 중에만 노출)
+function skipTutorial(){
+  hideAllOverlays();
+  initPlanets();
+  openHub();
+}
+document.getElementById('btn-pause-skip').onclick=skipTutorial;
+// 현재 컨텍스트 재시작 (튜토리얼 단계 / 스테이지 / 히든미션)
+function restartCurrent(){
+  hideAllOverlays();
+  initPlanets();
+  if(G.mode==='tutorial') startTutorialStage(G.tutorialStep);
+  else if(G.mode==='hidden') startHiddenMission(G.hiddenIdx);
+  else startStage(G.stageIdx||0);
+}
+// 메인 타이틀로 복귀 + 상태 초기화
+function goToMainMenu(){
+  saveCurrentProfile(); // 떠나기 전 저장
+  AudioFX.stopMusic();
+  hideAllOverlays();
+  G.mode='title';
+  G.ship=null;
+  G.missions={land:[],visit:[],collect:{need:0,got:0}};
+  G.recOrder=[]; // 미션과 함께 추천순서도 초기화(안 하면 stale 인덱스로 HUD 갱신 시 크래시)
+  G.hiddenTarget=null;
+  G.fuelItems=[];
+  G.debris=[];
+  G.particles=[];
+  G.fuel=100;
+  G.maxFuel=100;
+  G.timeLeft=0;
+  G.timerOn=false;
+  G.camX=0;G.camY=0;G.camTargetX=0;G.camTargetY=0;
+  G.zoom=1;
+  G.cameraFollowShip=true;
+  document.getElementById('btn-return-ship').style.display='none';
+  G.gameTime=0;
+  G.score=0;
+  G.startFuel=100;
+  G.paused=false;
+  document.getElementById('btn-pause').classList.add('hidden');
+  document.getElementById('btn-use-timebonus').classList.add('hidden');
+  G.tut=null; hideCoach();
+  showOverlay('ov-title');
+  initPlanets();
+}
+
+// ── 일시정지 메뉴 ──
+function openPauseMenu(){
+  if(!G.ship||G.ship.exploding) return;
+  // 튜토리얼일 때만 "건너뛰기" 항목 노출
+  document.getElementById('btn-pause-skip').classList.toggle('hidden', G.mode!=='tutorial');
+  G.paused=true;
+  showOverlay('ov-pause');
+}
+function resumeGame(){
+  hideAllOverlays();
+  G.paused=false;
+}
+document.getElementById('btn-pause').onclick=openPauseMenu;
+document.getElementById('btn-resume').onclick=resumeGame;
+document.getElementById('btn-pause-restart').onclick=restartCurrent;
+document.getElementById('btn-pause-mainmenu').onclick=goToMainMenu;
+// ── 도감 화면 ──
+function codexColor(name){
+  if(name==='태양') return '#ffbb00';
+  const pd=PLANET_DATA.find(d=>d.name===name); if(pd) return pd.color;
+  for(const d of PLANET_DATA) for(const s of (d.satellites||[])) if(s.name===name) return s.color;
+  const eb=EXTRA_BODIES.find(b=>b.name===name); if(eb) return eb.color;
+  return '#888';
+}
+function renderCodexDetail(name){
+  const el=document.getElementById('codex-detail');
+  if(!name){ el.innerHTML='<div class="codex-hint">천체를 눌러 정보를 확인하세요 🔭</div>'; return; }
+  const info=PLANET_INFO[name];
+  let html=`<div class="codex-detail-head"><canvas class="codex-detail-orb" width="72" height="72"></canvas>${name}</div>`;
+  if(info){
+    html+=`<div class="codex-detail-tag">${info.tagline}</div>`;
+    html+=info.facts.map(f=>`<div class="codex-fact">${f}</div>`).join('');
+  }
+  el.innerHTML=html;
+  const orb=el.querySelector('canvas.codex-detail-orb');
+  if(orb) renderPlanetThumb(orb, codexGlobeData(name));
+}
+// 도감 천체 → 썸네일용 데이터(행성은 en/ring 포함, 그 외는 색만)
+function codexGlobeData(name){
+  const pd=PLANET_DATA.find(d=>d.name===name);
+  if(pd) return {color:pd.color, en:pd.en, ring:pd.ring};
+  return {color:codexColor(name), en:''};
+}
+function renderCodex(){
+  document.getElementById('codex-progress').textContent=`${codexCount()}/${CODEX_ENTRIES.length}`;
+  const grid=document.getElementById('codex-grid'); grid.innerHTML='';
+  for(const cat of ['별','행성','위성','왜소행성','혜성']){
+    const entries=CODEX_ENTRIES.filter(e=>e.cat===cat);
+    if(!entries.length) continue;
+    const got=entries.filter(e=>G.discovered?.has(e.name)).length;
+    const h=document.createElement('div'); h.className='codex-cat'; h.textContent=`${cat} (${got}/${entries.length})`;
+    grid.appendChild(h);
+    const row=document.createElement('div'); row.className='codex-row';
+    for(const e of entries){
+      const found=G.discovered?.has(e.name);
+      const tile=document.createElement('div'); tile.className='codex-tile'+(found?'':' locked');
+      let dot;
+      if(found){ dot=document.createElement('canvas'); dot.className='codex-dot'; dot.width=72; dot.height=72; }
+      else { dot=document.createElement('div'); dot.className='codex-dot'; }
+      const nm=document.createElement('div'); nm.className='codex-nm'; nm.textContent=found?e.name:'???';
+      tile.appendChild(dot); tile.appendChild(nm);
+      if(found){ renderPlanetThumb(dot, codexGlobeData(e.name)); tile.onclick=()=>renderCodexDetail(e.name); }
+      row.appendChild(tile);
+    }
+    grid.appendChild(row);
+  }
+  renderCodexDetail(null);
+}
+let _codexFrom='ov-title';
+function openCodex(fromId){ _codexFrom=fromId||'ov-title'; renderCodex(); showOverlay('ov-codex'); }
+document.getElementById('btn-pause-codex').onclick=()=>openCodex('ov-pause');
+document.getElementById('btn-title-codex').onclick=()=>openCodex('ov-title');
+// 허브 버튼
+document.getElementById('btn-hub-codex').onclick=()=>openCodex('ov-hub');
+document.getElementById('btn-hub-menu').onclick=goToMainMenu;
+document.getElementById('btn-hub-shop').onclick=()=>{
+  G._shopReturn='hub';
+  document.getElementById('btn-shop-close').textContent='태양계 지도로';
+  renderShop();
+  showOverlay('ov-shop');
+};
+document.getElementById('btn-result-codex').onclick=()=>openCodex('ov-result');
+document.getElementById('btn-codex-close').onclick=()=>showOverlay(_codexFrom);
+// 테스트용: 현재 라운드 즉시 완료 → 결과(또는 8개 정복 시 다음에 엔딩)
+document.getElementById('btn-dev-complete').onclick=()=>{
+  if(G.mode!=='game'||!G.missions||!G.missions.land) return;
+  G.missions.land.forEach(m=>m.done=true);
+  G.missions.visit.forEach(m=>m.done=true);
+  G.missions.collect.got=G.missions.collect.need;
+  hideAllOverlays();
+  onStageComplete();
+};
+// Zoom buttons
+document.getElementById('btn-zoom-in').onclick=()=>{G.zoom=Math.min(MAX_ZOOM,G.zoom*1.25);};
+document.getElementById('btn-zoom-out').onclick=()=>{G.zoom=Math.max(MIN_ZOOM,G.zoom*0.8);};
+document.getElementById('btn-zoom-fit').onclick=()=>{
+  G.zoom=0.28;            // fit full solar system → triggers browse mode via updateCamera
+  G.camX=0;G.camY=0;      // center on the solar-system origin (sun) so everything is visible
+};
+document.getElementById('btn-return-ship').onclick=returnToShip;
+// 소리 켜기/끄기
+(function(){ const sb=document.getElementById('btn-sound'); if(!sb) return;
+  try{ if(localStorage.getItem('gl_sound')==='off') sb.textContent='🔇'; }catch(e){}
+  sb.onclick=()=>{ const on=AudioFX.toggle(); sb.textContent=on?'🔊':'🔇'; if(on) AudioFX.startMusic(); };
+})();
+// ── 소리 설정(볼륨 슬라이더) ──
+let _settingsFrom='ov-title';
+function openSettings(from){
+  _settingsFrom=from||'ov-title';
+  AudioFX.loadVols();
+  const m=Math.round(AudioFX.musicVol*100), s=Math.round(AudioFX.sfxVol*100);
+  const mEl=document.getElementById('set-music'), sEl=document.getElementById('set-sfx');
+  mEl.value=m; sEl.value=s;
+  document.getElementById('set-music-val').textContent=m+'%';
+  document.getElementById('set-sfx-val').textContent=s+'%';
+  const tEl=document.getElementById('set-track');
+  if(tEl){ tEl.innerHTML=MUSIC_TRACKS.map((t,i)=>`<option value="${i}">${t.title}</option>`).join(''); tEl.value=AudioFX.trackIdx; }
+  showOverlay('ov-settings');
+}
+document.getElementById('set-music').oninput=(e)=>{ AudioFX.init(); const v=+e.target.value; AudioFX.setMusicVol(v/100); document.getElementById('set-music-val').textContent=v+'%'; AudioFX.startMusic(); };
+document.getElementById('set-track').onchange=(e)=>{ AudioFX.init(); AudioFX.setTrack(+e.target.value); AudioFX.startMusic(); }; // 곡 선택 → 즉시 미리듣기
+document.getElementById('set-sfx').oninput=(e)=>{ const v=+e.target.value; document.getElementById('set-sfx-val').textContent=v+'%'; AudioFX.init(); AudioFX.setSfxVol(v/100); };
+document.getElementById('set-sfx').addEventListener('change',()=>{ AudioFX.play('pickup'); }); // 놓으면 미리듣기
+document.getElementById('btn-settings-close').onclick=()=>showOverlay(_settingsFrom);
+document.getElementById('btn-title-settings').onclick=()=>openSettings('ov-title');
+document.getElementById('btn-pause-settings').onclick=()=>openSettings('ov-pause');
+// Shop close
+document.getElementById('btn-shop-close').onclick=()=>{
+  hideAllOverlays();
+  if(G._shopReturn==='retry') restartCurrent(); // 게임오버 후 상점 → 현재 스테이지 재시작
+  else openHub(); // 클리어 후 상점 → 허브로
+};
+// Time bonus use
+let _tbFlashTimer=null;
+document.getElementById('btn-use-timebonus').onclick=()=>{
+  if((G.consumables.timeBonus||0)<=0) return;
+  G.consumables.timeBonus--;
+  G.timeLeft=Math.min(999,G.timeLeft+45);
+  showToast('⏱ 시간 +45초!','success');
+  updateConsumableBtns();
+  // flash +45s on timer
+  const flash=document.getElementById('time-bonus-flash');
+  flash.textContent='+45s';
+  flash.style.opacity='1'; flash.style.transform='translateY(0)';
+  if(_tbFlashTimer) clearTimeout(_tbFlashTimer);
+  _tbFlashTimer=setTimeout(()=>{flash.style.opacity='0';flash.style.transform='translateY(-6px)';},1500);
+};
+document.getElementById('btn-color-close').onclick=()=>{
+  hideAllOverlays();
+  showOverlay('ov-shop');
+};
+</script>
+</body>
+</html>
