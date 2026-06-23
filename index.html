@@ -387,7 +387,7 @@ canvas.codex-detail-orb{position:static;inset:auto;width:30px;height:30px;border
         <button class="btn btn-ghost" id="btn-skip">⏭ 튜토리얼 건너뛰기</button>
       </div>
     </div>
-    <div style="margin-top:24px;font-size:9px;color:rgba(255,255,255,.35);font-family:'Orbitron',monospace;letter-spacing:.1em;">Junmo / Seowon / Daddy</div>
+    <div style="margin-top:22px;font-size:10px;color:rgba(255,255,255,.4);font-family:'Orbitron',monospace;letter-spacing:.18em;">★ JUNMO · SEOWON · DADDY ❤️</div>
   </div>
 </div>
 
@@ -485,6 +485,7 @@ canvas.hub-dot{position:static;inset:auto;width:44px;height:44px;border-radius:0
     <p id="ending-msg">태양계의 모든 행성에 착륙했어요!<br>정말 훌륭한 우주 비행사예요 👏</p>
     <div id="ending-final"></div>
     <div id="ending-stats"></div>
+    <p id="ending-dedication" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);font-size:13px;line-height:1.8;color:#ffd88a;">우주처럼 넓은 꿈을 꾸기 바라며<br>- 아빠가 -</p>
     <button class="btn" id="btn-ending-ranking">🏆 랭킹 보기</button>
     <button class="btn btn-ghost" id="btn-ending-menu">🏠 메인메뉴로</button>
   </div>
@@ -889,13 +890,13 @@ const AudioFX = {
   },
   play(name){
     this.resume();
-    if(this.ctx && this.buffers[name]){ const s=this.ctx.createBufferSource(); s.buffer=this.buffers[name]; s.connect(this.sfxGain); s.start(); if(name==='explosion') this._expSrc=s; return; }
+    if(this.ctx && this.buffers[name]){ const s=this.ctx.createBufferSource(); s.buffer=this.buffers[name]; s.connect(this.sfxGain); s.start(); if(name==='explosion') this._expSrc=s; if(name==='land'){ try{ s.stop(this.ctx.currentTime+1.0); }catch(e){} } return; } // 착륙음은 1초로 짧게
     if(SOUND_SRC[name]){ this.playEl(name); return; } // 진짜 음원(엘리먼트 스트리밍, CORS 불필요)
     if(this.ctx) this.synth(name);                    // url 없으면 합성(클리어음 등)
   },
   playEl(name){
     if(!this.on) return;
-    try{ const a=new Audio(SOUND_SRC[name]); a.volume=this.sfxVol; if(name==='explosion') this._expEl=a; a.play().catch(()=>{ if(this.ctx) this.synth(name); }); }
+    try{ const a=new Audio(SOUND_SRC[name]); a.volume=this.sfxVol; if(name==='explosion') this._expEl=a; const p=a.play(); if(p&&p.catch) p.catch(()=>{ if(this.ctx) this.synth(name); }); if(name==='land') setTimeout(()=>{ try{a.pause();}catch(e){} },1000); }
     catch(e){ if(this.ctx) this.synth(name); }
   },
   stopExplosion(){ try{ this._expSrc&&this._expSrc.stop(); }catch(e){} this._expSrc=null; if(this._expEl){ try{ this._expEl.pause(); this._expEl.currentTime=0; }catch(e){} this._expEl=null; } },
